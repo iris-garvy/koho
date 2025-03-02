@@ -15,7 +15,7 @@ pub struct Cell<T: Eq + Hash + Clone, O: OpenSet> {
     pub incidents: Vec<usize>,
 }
 
-impl<T: Eq + Hash + Clone, O: OpenSet> Cell<T, O>{
+impl<T: Eq + Hash + Clone, O: OpenSet> Cell<T, O> {
     pub fn new(cell: Box<dyn KCell<T, O>>) -> Self {
         Self {
             cell,
@@ -29,9 +29,12 @@ pub struct Skeleton<T: Eq + Hash + Clone, O: OpenSet> {
     pub cells: Vec<Cell<T, O>>,
 }
 
-impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O>{
+impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
     pub fn init() -> Self {
-        Self { dimension: 0, cells: Vec::new() }
+        Self {
+            dimension: 0,
+            cells: Vec::new(),
+        }
     }
     pub fn attach(&mut self, cell: Box<dyn KCell<T, O>>) -> Result<(), Error> {
         let incoming_dim = cell.dimension() as i64;
@@ -46,9 +49,11 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O>{
         for p in cell.cell.points() {
             let point = cell.cell.attach(p, self);
             let mut truth = false;
-            self.cells.iter().enumerate().map(|(i, x)| if x.cell.points().contains(&point) {
-                truth = true;
-                cell.incidents.push(i);
+            self.cells.iter().enumerate().for_each(|(i, x)| {
+                if x.cell.points().contains(&point) {
+                    truth = true;
+                    cell.incidents.push(i);
+                }
             });
             if truth {
                 boundary.insert(point);
@@ -65,7 +70,7 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O>{
     pub fn fetch_cell_by_point(&self, point: O::Point) -> Result<(&Cell<T, O>, usize), Error> {
         for i in 0..self.cells.len() {
             if self.cells[i].cell.points().contains(&point) {
-                return Ok((&self.cells[i], i))
+                return Ok((&self.cells[i], i));
             };
         }
         Err(Error::NoPointFound)
@@ -73,23 +78,29 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O>{
 
     pub fn incident_cells(&self, cell_idx: usize) -> Result<&Vec<usize>, Error> {
         if cell_idx >= self.cells.len() {
-            return Err(Error::InvalidCellIdx)
+            return Err(Error::InvalidCellIdx);
         }
         Ok(&self.cells[cell_idx].incidents)
     }
 
-    pub fn filter_incident_by_dim(&self, cell_idx: usize) -> Result<Vec<usize>, Error> {
+    pub fn filter_incident_by_dim(
+        &self,
+        cell_idx: usize,
+    ) -> Result<(Vec<usize>, Vec<usize>), Error> {
         if cell_idx >= self.cells.len() {
-            return Err(Error::InvalidCellIdx)
+            return Err(Error::InvalidCellIdx);
         }
         let incidents = &self.cells[cell_idx].incidents;
         let dim = self.cells[cell_idx].cell.dimension();
-        let mut results = Vec::new();
+        let mut lower = Vec::new();
+        let mut upper = Vec::new();
         for i in incidents {
             if dim - self.cells[*i].cell.dimension() == 1 {
-                results.push(*i);
+                lower.push(*i);
+            } else if self.cells[*i].cell.dimension() - dim == 1 {
+                upper.push(*i);
             }
         }
-        Ok(results)
+        Ok((lower, upper))
     }
 }
