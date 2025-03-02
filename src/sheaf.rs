@@ -1,25 +1,13 @@
-use std::{
-    cell,
-    collections::{HashMap, HashSet},
-    ops::{Add, Mul, Neg},
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    add_vectors,
-    cw::{Cell, KCell, Skeleton},
+    algebra::{Field, Matrix},
+    cw::{KCell, Skeleton},
     error::Error,
 };
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Point<T: Eq + std::hash::Hash + Clone + Sized>(T);
-
-pub trait Field:
-    Add<Output = Self> + Mul<Output = Self> + Neg<Output = Self> + Copy + PartialEq + Sized
-{
-    fn zero() -> Self;
-    fn one() -> Self;
-    fn inv(&self) -> Option<Self>;
-}
 
 pub trait OpenSet: IntoIterator<Item = Self::Point> + Clone {
     type Point: Eq + std::hash::Hash;
@@ -36,17 +24,26 @@ pub trait Topology {
     fn is_open(&self, set: Self::OpenSet) -> bool;
 }
 
-pub struct Sections<F: Field>(Vec<Vec<F>>);
+pub struct Sections<F: Field> {
+    pub data: Vec<Vec<F>>,
+    pub bases: Option<Vec<Vec<F>>>,
+}
 
 impl<F: Field> Sections<F> {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self {
+            data: Vec::new(),
+            bases: None,
+        }
+    }
+    pub fn add_bases(&mut self, bases: Vec<Vec<F>>) {
+        self.bases = Some(bases)
     }
 }
 pub struct CellularSheaf<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> {
     pub cw: Skeleton<T, O>,
     pub data: Vec<Sections<F>>,
-    pub restrictions: HashMap<(usize, usize), Box<dyn Fn(&Vec<F>) -> Vec<F>>>,
+    pub restrictions: HashMap<(usize, usize), Matrix<F>>,
     pub global_sections: Vec<(Sections<F>)>,
 }
 
@@ -78,10 +75,10 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
         if cell_idx >= self.data.len() {
             return Err(Error::InvalidCellIdx);
         }
-        if data_idx >= self.data[cell_idx].0.len() {
+        if data_idx >= self.data[cell_idx].data.len() {
             return Err(Error::InvalidDataIdx);
         }
-        self.data[cell_idx].0[data_idx] = val;
+        self.data[cell_idx].data[data_idx] = val;
         Ok(())
     }
 
@@ -89,7 +86,7 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
         if cell_idx >= self.data.len() {
             return Err(Error::InvalidCellIdx);
         }
-        self.data[cell_idx].0.push(val);
+        self.data[cell_idx].data.push(val);
         Ok(())
     }
 
@@ -97,37 +94,73 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
         &mut self,
         start_cell: usize,
         final_cell: usize,
-        map: Box<dyn Fn(&Vec<F>) -> Vec<F>>,
+        map: Matrix<F>,
     ) -> Result<(), Error> {
         if start_cell >= self.cw.cells.len() || final_cell >= self.cw.cells.len() {
             return Err(Error::InvalidCellIdx);
-        }
-        if self.cw.cells[start_cell].cell.dimension() <= self.cw.cells[final_cell].cell.dimension()
-        {
-            return Err(Error::DimensionMismatch);
         }
         self.restrictions.insert((start_cell, final_cell), map);
         Ok(())
     }
 
-    pub fn k_coboundary(&mut self, cell_idx: usize, data_idx: usize) -> Result<Vec<F>, Error> {
+    pub fn k_coboundary(
+        &mut self,
+        cell_idx: usize,
+        data_idx: usize,
+    ) -> Result<Vec<(Vec<F>, usize)>, Error> {
         if cell_idx >= self.cw.cells.len() {
             return Err(Error::InvalidCellIdx);
         }
-        if data_idx >= self.data[cell_idx].0.len() {
+        if data_idx >= self.data[cell_idx].data.len() {
             return Err(Error::InvalidDataIdx);
         }
         let mut results = Vec::new();
         for i in self.cw.filter_incident_by_dim(cell_idx)?.1 {
-            let restriction = self.restrictions.get(&(i, cell_idx));
+            let restriction = self.restrictions.get(&(cell_idx, i));
             if restriction.is_none() {
                 return Err(Error::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            if results.is_empty() {
-                results = restrict(&self.data[cell_idx].0[data_idx]);
+            results.push((
+                restrict
+                    .transform(&self.data[cell_idx].data[data_idx])
+                    .unwrap(),
+                i,
+            ));
+        }
+        Ok(results)
+    }
+
+    pub fn k_coboundary_adjoint(
+        &mut self,
+        cell_idx: usize,
+        cochain: Vec<(Vec<F>, usize)>,
+    ) -> Result<Vec<F>, Error> {
+        if cell_idx >= self.cw.cells.len() {
+            return Err(Error::InvalidCellIdx);
+        }
+        let idxs = cochain.iter().map(|(_, x)| *x).collect::<Vec<_>>();
+        let domain_bases = &self.data[cell_idx].bases;
+        let mut results = Vec::new();
+        for i in idxs {
+            if !self.cw.filter_incident_by_dim(cell_idx)?.1.contains(&i) {
+                return Err(Error::BadCochain);
+            };
+            let restriction = self.restrictions.get(&(cell_idx, i));
+            if restriction.is_none() {
+                return Err(Error::NoRestrictionDefined);
             }
-            results = add_vectors(&results, &restrict(&self.data[cell_idx].0[data_idx]));
+            let restrict = restriction.unwrap();
+            if domain_bases.is_some() && self.data[i].bases.is_some() {
+                results = restrict
+                    .adjoint(
+                        &domain_bases.as_ref().unwrap(),
+                        &self.data[i].bases.as_ref().unwrap(),
+                    )?
+                    .transform(&cochain[i].0)?;
+                continue;
+            }
+            results = restrict.transpose().transform(&cochain[i].0)?;
         }
         Ok(results)
     }
@@ -150,7 +183,11 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
             return Err(Error::NoRestrictionDefined);
         }
         let restrict = restriction.unwrap();
-        if restrict(&self.data[start_cell].0[data_idx]) != self.data[final_cell].0[data_idx] {
+        if restrict
+            .transform(&self.data[start_cell].data[data_idx])
+            .unwrap()
+            != self.data[final_cell].data[data_idx]
+        {
             return Ok(false);
         }
         Ok(true)
