@@ -110,7 +110,7 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
         if start_cell >= self.cw.cells.len() || final_cell >= self.cw.cells.len() {
             return Err(MathError::InvalidCellIdx);
         }
-        if self.cw.cells[start_cell].cell.dimension() <= self.cw.cells[final_cell].cell.dimension()
+        if self.cw.cells[start_cell].cell.dimension() >= self.cw.cells[final_cell].cell.dimension()
         {
             return Err(MathError::NoRestrictionDefined);
         }

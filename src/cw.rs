@@ -46,21 +46,31 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
         }
         let mut cell = Cell::new(cell);
         let mut boundary = cell.cell.boundary();
+        let mut incident_indices = Vec::new();
         for p in cell.cell.points() {
             let point = cell.cell.attach(p, self);
             let mut truth = false;
             self.cells.iter().enumerate().for_each(|(i, x)| {
                 if x.cell.points().contains(&point) {
                     truth = true;
-                    cell.incidents.push(i);
+                    if !cell.incidents.contains(&i) {
+                        cell.incidents.push(i);
+                        incident_indices.push(i);
+                    }
                 }
             });
             if truth {
                 boundary.insert(point);
             }
         }
+        let new_cell_idx = self.cells.len();
         cell.cell.remove(boundary);
         self.cells.push(cell);
+        for idx in incident_indices {
+            if !self.cells[idx].incidents.contains(&new_cell_idx) {
+                self.cells[idx].incidents.push(new_cell_idx);
+            }
+        }
         if incoming_dim - self.dimension as i64 == 1 {
             self.dimension += 1
         }
@@ -95,9 +105,9 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
         let mut lower = Vec::new();
         let mut upper = Vec::new();
         for i in incidents {
-            if dim - self.cells[*i].cell.dimension() == 1 {
+            if dim as i64 - self.cells[*i].cell.dimension() as i64 == 1 {
                 lower.push(*i);
-            } else if self.cells[*i].cell.dimension() - dim == 1 {
+            } else if self.cells[*i].cell.dimension() as i64 - dim as i64 == 1 {
                 upper.push(*i);
             }
         }
