@@ -1,6 +1,6 @@
-use std::{cell, collections::HashSet, hash::Hash};
+use std::{collections::HashSet, hash::Hash};
 
-use crate::{error::Error, sheaf::OpenSet};
+use crate::{error::MathError, sheaf::OpenSet};
 
 pub trait KCell<T: Eq + Hash + Clone, O: OpenSet> {
     fn points(&self) -> HashSet<&O::Point>;
@@ -36,13 +36,13 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
             cells: Vec::new(),
         }
     }
-    pub fn attach(&mut self, cell: Box<dyn KCell<T, O>>) -> Result<(), Error> {
+    pub fn attach(&mut self, cell: Box<dyn KCell<T, O>>) -> Result<(), MathError> {
         let incoming_dim = cell.dimension() as i64;
         if incoming_dim - self.dimension as i64 > 1 {
-            return Err(Error::DimensionMismatch);
+            return Err(MathError::DimensionMismatch);
         }
         if self.dimension == 0 && incoming_dim == 1 && self.cells.len() == 0 {
-            return Err(Error::CWUninitialized);
+            return Err(MathError::CWUninitialized);
         }
         let mut cell = Cell::new(cell);
         let mut boundary = cell.cell.boundary();
@@ -67,18 +67,18 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
         Ok(())
     }
 
-    pub fn fetch_cell_by_point(&self, point: O::Point) -> Result<(&Cell<T, O>, usize), Error> {
+    pub fn fetch_cell_by_point(&self, point: O::Point) -> Result<(&Cell<T, O>, usize), MathError> {
         for i in 0..self.cells.len() {
             if self.cells[i].cell.points().contains(&point) {
                 return Ok((&self.cells[i], i));
             };
         }
-        Err(Error::NoPointFound)
+        Err(MathError::NoPointFound)
     }
 
-    pub fn incident_cells(&self, cell_idx: usize) -> Result<&Vec<usize>, Error> {
+    pub fn incident_cells(&self, cell_idx: usize) -> Result<&Vec<usize>, MathError> {
         if cell_idx >= self.cells.len() {
-            return Err(Error::InvalidCellIdx);
+            return Err(MathError::InvalidCellIdx);
         }
         Ok(&self.cells[cell_idx].incidents)
     }
@@ -86,9 +86,9 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
     pub fn filter_incident_by_dim(
         &self,
         cell_idx: usize,
-    ) -> Result<(Vec<usize>, Vec<usize>), Error> {
+    ) -> Result<(Vec<usize>, Vec<usize>), MathError> {
         if cell_idx >= self.cells.len() {
-            return Err(Error::InvalidCellIdx);
+            return Err(MathError::InvalidCellIdx);
         }
         let incidents = &self.cells[cell_idx].incidents;
         let dim = self.cells[cell_idx].cell.dimension();

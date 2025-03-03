@@ -1,6 +1,6 @@
 use std::ops::{Add, Mul, Neg};
 
-use crate::error::Error;
+use crate::error::MathError;
 
 pub trait Field:
     Add<Output = Self> + Mul<Output = Self> + Neg<Output = Self> + Copy + PartialEq + Sized
@@ -18,14 +18,14 @@ pub struct Matrix<F: Field> {
 }
 
 impl<F: Field> Matrix<F> {
-    pub fn isafield() -> Result<(), Error> {
+    pub fn isafield() -> Result<(), MathError> {
         if F::one().inv() + F::one() != F::zero()
             || F::one() + F::zero() != F::one()
             || F::zero() + F::zero() != F::zero()
             || F::one() * F::one() != F::one()
             || F::one() * F::zero() != F::zero()
         {
-            return Err(Error::BadField);
+            return Err(MathError::BadField);
         }
         Ok(())
     }
@@ -38,9 +38,9 @@ impl<F: Field> Matrix<F> {
         }
     }
 
-    pub fn from_vec(mut data: Vec<Vec<F>>) -> Result<Self, Error> {
+    pub fn from_vec(mut data: Vec<Vec<F>>) -> Result<Self, MathError> {
         if data.is_empty() {
-            return Err(Error::NullMatrix);
+            return Err(MathError::NullMatrix);
         }
 
         let rows = data.len();
@@ -58,7 +58,7 @@ impl<F: Field> Matrix<F> {
 
         for row in &data {
             if row.len() != cols {
-                return Err(Error::DimensionMismatch);
+                return Err(MathError::DimensionMismatch);
             }
         }
 
@@ -91,9 +91,9 @@ impl<F: Field> Matrix<F> {
         &self,
         domain_bases: &[Vec<F>],
         codomain_bases: &[Vec<F>],
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, MathError> {
         if domain_bases.len() != self.cols || codomain_bases.len() != self.rows {
-            return Err(Error::ImproperBases);
+            return Err(MathError::ImproperBases);
         }
         let mut domain = Matrix::new(self.cols, self.cols);
         let mut codomain = Matrix::new(self.rows, self.rows);
@@ -109,14 +109,14 @@ impl<F: Field> Matrix<F> {
             }
         }
         let adjoint = domain
-            .multiply(self.transpose().multiply(codomain).unwrap())
+            .multiply(&self.transpose().multiply(&codomain).unwrap())
             .unwrap();
         Ok(adjoint)
     }
 
-    pub fn multiply(&self, other: Matrix<F>) -> Result<Self, Error> {
+    pub fn multiply(&self, other: &Matrix<F>) -> Result<Self, MathError> {
         if other.rows != self.cols {
-            return Err(Error::DimensionMismatch);
+            return Err(MathError::DimensionMismatch);
         }
         let mut result = Self::new(self.rows, other.cols);
         for i in 0..self.rows {
@@ -131,9 +131,23 @@ impl<F: Field> Matrix<F> {
         Ok(result)
     }
 
-    pub fn transform(&self, vec: &[F]) -> Result<Vec<F>, Error> {
+    pub fn add(&self, other: Matrix<F>) -> Result<Self, MathError> {
+        if other.rows != self.rows || other.cols != self.cols {
+            return Err(MathError::DimensionMismatch);
+        }
+        let mut new = Matrix::new(self.rows, self.cols);
+
+        for i in 0..self.rows {
+            for j in 0..self.cols {
+                new.data[i][j] = self.data[i][j] + other.data[i][j]
+            }
+        }
+        Ok(new)
+    }
+
+    pub fn transform(&self, vec: &[F]) -> Result<Vec<F>, MathError> {
         if vec.len() != self.cols {
-            return Err(Error::DimensionMismatch);
+            return Err(MathError::DimensionMismatch);
         }
         let mut new = vec![F::zero(); self.rows];
         for i in 0..self.rows {
@@ -147,20 +161,20 @@ impl<F: Field> Matrix<F> {
     }
 }
 
-pub fn add_vectors<F: Field>(a: &[F], b: &[F]) -> Result<Vec<F>, Error>
+pub fn add_vectors<F: Field>(a: &[F], b: &[F]) -> Result<Vec<F>, MathError>
 where
     F: std::ops::Add<Output = F> + Copy,
 {
     if a.len() != b.len() {
-        return Err(Error::DimensionMismatch);
+        return Err(MathError::DimensionMismatch);
     }
 
     Ok(a.iter().zip(b.iter()).map(|(&x, &y)| x + y).collect())
 }
 
-pub fn inner_product<F: Field>(a: &[F], b: &[F]) -> Result<F, Error> {
+pub fn inner_product<F: Field>(a: &[F], b: &[F]) -> Result<F, MathError> {
     if a.len() != b.len() {
-        return Err(Error::DimensionMismatch);
+        return Err(MathError::DimensionMismatch);
     }
     let mut output = F::zero();
     let together = a.iter().zip(b);

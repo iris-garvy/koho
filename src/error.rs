@@ -1,5 +1,5 @@
 #[derive(Clone, Debug)]
-pub enum Error {
+pub enum MathError {
     DimensionMismatch,
     CWUninitialized,
     InvalidCellIdx,
@@ -11,4 +11,5 @@ pub enum Error {
     BadField,
     ImproperBases,
     BadCochain,
+    NoCellsofDimensionK
 }
