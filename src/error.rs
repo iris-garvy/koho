@@ -11,5 +11,6 @@ pub enum MathError {
     BadField,
     ImproperBases,
     BadCochain,
-    NoCellsofDimensionK
+    NoCellsofDimensionK,
+    NotInvertible
 }

@@ -1,9 +1,9 @@
-use std::ops::{Add, Mul, Neg};
+use std::ops::{Add, Mul, Neg, Sub};
 
 use crate::error::MathError;
 
 pub trait Field:
-    Add<Output = Self> + Mul<Output = Self> + Neg<Output = Self> + Copy + PartialEq + Sized
+    Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Neg<Output = Self> + Copy + PartialEq
 {
     fn zero() -> Self;
     fn one() -> Self;
@@ -11,15 +11,16 @@ pub trait Field:
     fn conj(&self) -> Self;
 }
 
+#[derive(Clone, PartialEq, Debug)]
 pub struct Matrix<F: Field> {
-    data: Vec<Vec<F>>,
-    rows: usize,
-    cols: usize,
+    pub data: Vec<Vec<F>>,
+    pub rows: usize,
+    pub cols: usize,
 }
 
 impl<F: Field> Matrix<F> {
     pub fn isafield() -> Result<(), MathError> {
-        if F::one().inv() + F::one() != F::zero()
+        if F::one().inv() * F::one() != F::one()
             || F::one() + F::zero() != F::one()
             || F::zero() + F::zero() != F::zero()
             || F::one() * F::one() != F::one()
@@ -108,7 +109,7 @@ impl<F: Field> Matrix<F> {
                 domain.data[i][j] = inner_product(&domain_bases[i], &domain_bases[j]).unwrap();
             }
         }
-        let adjoint = domain
+        let adjoint = domain.inverse()?.transpose()
             .multiply(&self.transpose().multiply(&codomain).unwrap())
             .unwrap();
         Ok(adjoint)
@@ -153,11 +154,77 @@ impl<F: Field> Matrix<F> {
         for i in 0..self.rows {
             let mut sum = F::zero();
             for j in 0..self.cols {
-                sum = self.data[i][j] * vec[j];
+                sum = sum + self.data[i][j] * vec[j];
             }
             new[i] = sum;
         }
         Ok(new)
+    }
+
+    pub fn inverse(&self) -> Result<Self, MathError> {
+        if self.rows != self.cols {
+            return Err(MathError::DimensionMismatch);
+        }
+    
+        let n = self.rows;
+        let mut augmented = Self::new(n, 2 * n);
+        
+        for i in 0..n {
+            for j in 0..n {
+                augmented.data[i][j] = self.data[i][j];
+            }
+        }
+        for i in 0..n {
+            augmented.data[i][i + n] = F::one();
+        }
+        for i in 0..n {
+            let mut pivot_row = i;
+            if augmented.data[i][i] == F::zero() {
+                let mut found_pivot = false;
+                for k in (i + 1)..n {
+                    if augmented.data[k][i] != F::zero() {
+                        pivot_row = k;
+                        found_pivot = true;
+                        break;
+                    }
+                }
+                if !found_pivot {
+                    return Err(MathError::NotInvertible);
+                }
+                if pivot_row != i {
+                    for j in 0..(2 * n) {
+                        let temp = augmented.data[i][j];
+                        augmented.data[i][j] = augmented.data[pivot_row][j];
+                        augmented.data[pivot_row][j] = temp;
+                    }
+                }
+            }
+
+            let pivot = augmented.data[i][i];
+            let pivot_inv = pivot.inv();
+            
+            for j in 0..(2 * n) {
+                augmented.data[i][j] = augmented.data[i][j] * pivot_inv;
+            }
+            
+            for k in 0..n {
+                if k != i {
+                    let factor = augmented.data[k][i];
+                    for j in 0..(2 * n) {
+                        augmented.data[k][j] = augmented.data[k][j] - (factor * augmented.data[i][j]);
+                    }
+                }
+            }
+        }
+        
+        let mut result = Self::new(n, n);
+        for i in 0..n {
+            for j in 0..n {
+                result.data[i][j] = augmented.data[i][j + n];
+            }
+        }
+        
+        Ok(result)
     }
 }
 
@@ -182,4 +249,81 @@ pub fn inner_product<F: Field>(a: &[F], b: &[F]) -> Result<F, MathError> {
         output = output + *a * *b;
     }
     Ok(output)
+}
+
+pub mod numerical {
+    use super::Field;
+    use num_complex::Complex;
+
+    impl Field for f64 {
+        fn zero() -> Self {
+            0.0
+        }
+    
+        fn one() -> Self {
+            1.0
+        }
+    
+        fn inv(&self) -> Self {
+            1.0 / self
+        }
+    
+        fn conj(&self) -> Self {
+            *self
+        }
+    }
+
+    impl Field for f32 {
+        fn zero() -> Self {
+            0.0
+        }
+    
+        fn one() -> Self {
+            1.0
+        }
+    
+        fn inv(&self) -> Self {
+            1.0 / self
+        }
+    
+        fn conj(&self) -> Self {
+            *self
+        }
+    }
+
+    impl Field for Complex<f64> {
+        fn zero() -> Self {
+            Complex::new(0.0, 0.0)
+        }
+    
+        fn one() -> Self {
+            Complex::new(1.0, 0.0)
+        }
+    
+        fn inv(&self) -> Self {
+            self.inv()
+        }
+    
+        fn conj(&self) -> Self {
+            self.conj()
+        }
+    }
+
+    impl Field for Complex<f32> {
+        fn zero() -> Self {
+            Complex::new(0.0, 0.0)
+        }
+    
+        fn one() -> Self {
+            Complex::new(1.0, 0.0)
+        }
+    
+        fn inv(&self) -> Self {
+            self.inv()
+        }
+    
+        fn conj(&self) -> Self {
+            self.conj()
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use std::{cell, collections::{HashMap, HashSet}};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     algebra::{add_vectors, Field, Matrix},
@@ -243,7 +243,6 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
             }
             let restrict = restriction.unwrap();
             if self.section_spaces[cell_idx].bases.is_some() && self.section_spaces[i].bases.is_some() {
-                let bases = self.section_spaces[cell_idx].bases.as_ref().unwrap();
                 matrix = matrix.add(restrict.adjoint(&self.section_spaces[cell_idx].bases.as_ref().unwrap(), &self.section_spaces[i].bases.as_ref().unwrap())?.multiply(restrict)?)?;
                 continue;
             }
