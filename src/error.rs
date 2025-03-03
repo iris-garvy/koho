@@ -12,5 +12,5 @@ pub enum MathError {
     ImproperBases,
     BadCochain,
     NoCellsofDimensionK,
-    NotInvertible
+    NotInvertible,
 }

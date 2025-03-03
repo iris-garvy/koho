@@ -35,7 +35,7 @@ impl<F: Field> Sections<F> {
         Self {
             data: Vec::new(),
             bases: None,
-            dimension
+            dimension,
         }
     }
     pub fn add_bases(&mut self, bases: Vec<Vec<F>>) {
@@ -66,7 +66,7 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
         &mut self,
         cell: Box<dyn KCell<T, O>>,
         data: Option<Sections<F>>,
-        section_dimension: usize
+        section_dimension: usize,
     ) -> Result<(), MathError> {
         self.section_spaces.push(if data.is_some() {
             data.unwrap()
@@ -77,7 +77,12 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
         Ok(())
     }
 
-    pub fn update(&mut self, cell_idx: usize, data_idx: usize, val: Vec<F>) -> Result<(), MathError> {
+    pub fn update(
+        &mut self,
+        cell_idx: usize,
+        data_idx: usize,
+        val: Vec<F>,
+    ) -> Result<(), MathError> {
         if cell_idx >= self.section_spaces.len() {
             return Err(MathError::InvalidCellIdx);
         }
@@ -235,34 +240,53 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
 
     pub fn local_up_laplacian(&self, cell_idx: usize) -> Result<Matrix<F>, MathError> {
         let (_, up) = self.cw.filter_incident_by_dim(cell_idx)?;
-        let mut matrix = Matrix::new(self.section_spaces[cell_idx].dimension, self.section_spaces[cell_idx].dimension);
+        let mut matrix = Matrix::new(
+            self.section_spaces[cell_idx].dimension,
+            self.section_spaces[cell_idx].dimension,
+        );
         for i in up {
             let restriction = self.restrictions.get(&(cell_idx, i));
             if restriction.is_none() {
                 return Err(MathError::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            if self.section_spaces[cell_idx].bases.is_some() && self.section_spaces[i].bases.is_some() {
-                matrix = matrix.add(restrict.adjoint(&self.section_spaces[cell_idx].bases.as_ref().unwrap(), &self.section_spaces[i].bases.as_ref().unwrap())?.multiply(restrict)?)?;
+            if self.section_spaces[cell_idx].bases.is_some()
+                && self.section_spaces[i].bases.is_some()
+            {
+                matrix = matrix.add(
+                    restrict
+                        .adjoint(
+                            &self.section_spaces[cell_idx].bases.as_ref().unwrap(),
+                            &self.section_spaces[i].bases.as_ref().unwrap(),
+                        )?
+                        .multiply(restrict)?,
+                )?;
                 continue;
             }
             matrix = matrix.add(restrict.transpose().multiply(restrict)?)?;
-
         }
         Ok(matrix)
     }
 
     pub fn local_down_laplacian(&self, cell_idx: usize) -> Result<Matrix<F>, MathError> {
         let (down, _) = self.cw.filter_incident_by_dim(cell_idx)?;
-        let mut matrix = Matrix::new(self.section_spaces[cell_idx].dimension, self.section_spaces[cell_idx].dimension);
+        let mut matrix = Matrix::new(
+            self.section_spaces[cell_idx].dimension,
+            self.section_spaces[cell_idx].dimension,
+        );
         for i in down {
             let restriction = self.restrictions.get(&(i, cell_idx));
             if restriction.is_none() {
                 return Err(MathError::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            if self.section_spaces[cell_idx].bases.is_some() && self.section_spaces[i].bases.is_some() {
-                matrix = matrix.add(restrict.multiply(&restrict.adjoint(&self.section_spaces[cell_idx].bases.as_ref().unwrap(), &self.section_spaces[i].bases.as_ref().unwrap())?)?)?;
+            if self.section_spaces[cell_idx].bases.is_some()
+                && self.section_spaces[i].bases.is_some()
+            {
+                matrix = matrix.add(restrict.multiply(&restrict.adjoint(
+                    &self.section_spaces[cell_idx].bases.as_ref().unwrap(),
+                    &self.section_spaces[i].bases.as_ref().unwrap(),
+                )?)?)?;
                 continue;
             }
             matrix = matrix.add(restrict.multiply(&restrict.transpose())?)?;
@@ -271,10 +295,9 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
     }
 
     pub fn local_laplacian(&self, cell_idx: usize) -> Result<Matrix<F>, MathError> {
-        Ok(
-            self.local_up_laplacian(cell_idx)?.add(
-            self.local_down_laplacian(cell_idx)?
-        )?)
+        Ok(self
+            .local_up_laplacian(cell_idx)?
+            .add(self.local_down_laplacian(cell_idx)?)?)
     }
 
     pub fn k_laplacian(&self, k: usize) -> Result<Matrix<F>, MathError> {
@@ -285,9 +308,12 @@ impl<F: Field, T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<F, T, 
             }
         });
         if valid.is_empty() {
-            return Err(MathError::NoCellsofDimensionK)
+            return Err(MathError::NoCellsofDimensionK);
         }
-        let mut global = Matrix::new(self.section_spaces[valid[0]].dimension, self.section_spaces[valid[0]].dimension);
+        let mut global = Matrix::new(
+            self.section_spaces[valid[0]].dimension,
+            self.section_spaces[valid[0]].dimension,
+        );
         for i in valid {
             if self.section_spaces[i].dimension != global.dimensions().0 {
                 return Err(MathError::DimensionMismatch);

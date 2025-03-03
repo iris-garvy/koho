@@ -4,9 +4,9 @@ pub mod error;
 pub mod sheaf;
 
 mod prelude {
-    use crate::algebra::{Matrix, numerical, add_vectors, inner_product};
+    use crate::algebra::{add_vectors, inner_product, numerical, Matrix};
+    use crate::cw::{KCell, Skeleton};
     use crate::error::MathError;
-    use crate::cw::{Skeleton, KCell};
     use crate::sheaf::CellularSheaf;
 }
 
@@ -31,7 +31,10 @@ mod algebra_tests {
         let a = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let b = vec![2.0, 4.0, 6.0, 8.0, 10.0];
 
-        assert_eq!(add_vectors(&a, &b).unwrap(), vec![3.0, 6.0, 9.0, 12.0, 15.0])
+        assert_eq!(
+            add_vectors(&a, &b).unwrap(),
+            vec![3.0, 6.0, 9.0, 12.0, 15.0]
+        )
     }
 
     #[test]
@@ -69,7 +72,7 @@ mod algebra_tests {
         let matrix = Matrix::from_vec(vec![vec![rng.random::<f64>(); 8]; 10]).unwrap();
         let mt = matrix.transpose();
         let identity = Matrix::<f64>::identity(10);
-        
+
         assert_eq!(identity.transpose(), identity);
         for i in 0..10 {
             for j in 0..8 {

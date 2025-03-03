@@ -109,7 +109,9 @@ impl<F: Field> Matrix<F> {
                 domain.data[i][j] = inner_product(&domain_bases[i], &domain_bases[j]).unwrap();
             }
         }
-        let adjoint = domain.inverse()?.transpose()
+        let adjoint = domain
+            .inverse()?
+            .transpose()
             .multiply(&self.transpose().multiply(&codomain).unwrap())
             .unwrap();
         Ok(adjoint)
@@ -165,10 +167,10 @@ impl<F: Field> Matrix<F> {
         if self.rows != self.cols {
             return Err(MathError::DimensionMismatch);
         }
-    
+
         let n = self.rows;
         let mut augmented = Self::new(n, 2 * n);
-        
+
         for i in 0..n {
             for j in 0..n {
                 augmented.data[i][j] = self.data[i][j];
@@ -202,28 +204,29 @@ impl<F: Field> Matrix<F> {
 
             let pivot = augmented.data[i][i];
             let pivot_inv = pivot.inv();
-            
+
             for j in 0..(2 * n) {
                 augmented.data[i][j] = augmented.data[i][j] * pivot_inv;
             }
-            
+
             for k in 0..n {
                 if k != i {
                     let factor = augmented.data[k][i];
                     for j in 0..(2 * n) {
-                        augmented.data[k][j] = augmented.data[k][j] - (factor * augmented.data[i][j]);
+                        augmented.data[k][j] =
+                            augmented.data[k][j] - (factor * augmented.data[i][j]);
                     }
                 }
             }
         }
-        
+
         let mut result = Self::new(n, n);
         for i in 0..n {
             for j in 0..n {
                 result.data[i][j] = augmented.data[i][j + n];
             }
         }
-        
+
         Ok(result)
     }
 }
@@ -259,15 +262,15 @@ pub mod numerical {
         fn zero() -> Self {
             0.0
         }
-    
+
         fn one() -> Self {
             1.0
         }
-    
+
         fn inv(&self) -> Self {
             1.0 / self
         }
-    
+
         fn conj(&self) -> Self {
             *self
         }
@@ -277,15 +280,15 @@ pub mod numerical {
         fn zero() -> Self {
             0.0
         }
-    
+
         fn one() -> Self {
             1.0
         }
-    
+
         fn inv(&self) -> Self {
             1.0 / self
         }
-    
+
         fn conj(&self) -> Self {
             *self
         }
@@ -295,15 +298,15 @@ pub mod numerical {
         fn zero() -> Self {
             Complex::new(0.0, 0.0)
         }
-    
+
         fn one() -> Self {
             Complex::new(1.0, 0.0)
         }
-    
+
         fn inv(&self) -> Self {
             self.inv()
         }
-    
+
         fn conj(&self) -> Self {
             self.conj()
         }
@@ -313,15 +316,15 @@ pub mod numerical {
         fn zero() -> Self {
             Complex::new(0.0, 0.0)
         }
-    
+
         fn one() -> Self {
             Complex::new(1.0, 0.0)
         }
-    
+
         fn inv(&self) -> Self {
             self.inv()
         }
-    
+
         fn conj(&self) -> Self {
             self.conj()
         }
