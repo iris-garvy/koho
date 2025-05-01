@@ -84,7 +84,7 @@ mod cw_tests {
     struct TestEdge {
         start: TestPoint,
         end: TestPoint,
-        id: String,
+        _id: String,
         removed: HashSet<TestPoint>,
     }
 
@@ -123,8 +123,8 @@ mod cw_tests {
 
     struct TestFace {
         vertices: Vec<TestPoint>,
-        edges: Vec<String>,
-        id: String,
+        _edges: Vec<String>,
+        _id: String,
         removed: HashSet<TestPoint>,
     }
 
@@ -203,7 +203,7 @@ mod cw_tests {
         let edge = TestEdge {
             start: TestPoint("A".to_string()),
             end: TestPoint("B".to_string()),
-            id: "Edge_AB".to_string(),
+            _id: "Edge_AB".to_string(),
             removed: HashSet::new(),
         };
 
@@ -223,12 +223,12 @@ mod cw_tests {
                 TestPoint("B".to_string()),
                 TestPoint("C".to_string()),
             ],
-            edges: vec![
+            _edges: vec![
                 "Edge_AB".to_string(),
                 "Edge_BC".to_string(),
                 "Edge_CA".to_string(),
             ],
-            id: "Face_ABC".to_string(),
+            _id: "Face_ABC".to_string(),
             removed: HashSet::new(),
         };
 
@@ -243,7 +243,7 @@ mod cw_tests {
         let edge = TestEdge {
             start: TestPoint("A".to_string()),
             end: TestPoint("B".to_string()),
-            id: "Edge_AB".to_string(),
+            _id: "Edge_AB".to_string(),
             removed: HashSet::new(),
         };
 
@@ -281,7 +281,7 @@ mod cw_tests {
         let edge = TestEdge {
             start: TestPoint("A".to_string()),
             end: TestPoint("B".to_string()),
-            id: "Edge_AB".to_string(),
+            _id: "Edge_AB".to_string(),
             removed: HashSet::new(),
         };
         skeleton.attach(Box::new(edge)).unwrap();
@@ -319,19 +319,19 @@ mod cw_tests {
         let edge1 = TestEdge {
             start: TestPoint("A".to_string()),
             end: TestPoint("B".to_string()),
-            id: "Edge_AB".to_string(),
+            _id: "Edge_AB".to_string(),
             removed: HashSet::new(),
         };
         let edge2 = TestEdge {
             start: TestPoint("B".to_string()),
             end: TestPoint("C".to_string()),
-            id: "Edge_BC".to_string(),
+            _id: "Edge_BC".to_string(),
             removed: HashSet::new(),
         };
         let edge3 = TestEdge {
             start: TestPoint("C".to_string()),
             end: TestPoint("A".to_string()),
-            id: "Edge_CA".to_string(),
+            _id: "Edge_CA".to_string(),
             removed: HashSet::new(),
         };
         skeleton.attach(Box::new(edge1)).unwrap();
@@ -344,12 +344,12 @@ mod cw_tests {
                 TestPoint("B".to_string()),
                 TestPoint("C".to_string()),
             ],
-            edges: vec![
+            _edges: vec![
                 "Edge_AB".to_string(),
                 "Edge_BC".to_string(),
                 "Edge_CA".to_string(),
             ],
-            id: "Face_ABC".to_string(),
+            _id: "Face_ABC".to_string(),
             removed: HashSet::new(),
         };
         skeleton.attach(Box::new(face)).unwrap();
