@@ -1,4 +1,6 @@
-#[derive(Clone, Debug)]
+use candle_core::error::Error;
+
+#[derive(Debug)]
 pub enum MathError {
     DimensionMismatch,
     CWUninitialized,
@@ -13,4 +15,5 @@ pub enum MathError {
     BadCochain,
     NoCellsofDimensionK,
     NotInvertible,
+    Candle(Error)
 }
