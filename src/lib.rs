@@ -371,3 +371,169 @@ mod cw_tests {
         assert_eq!(upper.len(), 0);
     }
 }
+
+#[cfg(test)]
+mod sheaf_tests {
+    //! Tests for the `CellularSheaf` layer – sections, restrictions,
+    //! (co)boundaries, Laplacians, and glue checking.
+    use candle_core::{DType, Device, Tensor};
+    use std::collections::HashSet;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    struct TestPoint(String);
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOpenSet {
+        points: HashSet<TestPoint>,
+    }
+
+    impl crate::sheaf::OpenSet for TestOpenSet {
+        type Point = TestPoint;
+
+        fn union(&self, other: Self) -> Self {
+            let mut points = self.points.clone();
+            points.extend(other.points);
+            Self { points }
+        }
+        fn intersection(&self, other: Self) -> Self {
+            let mut pts = HashSet::new();
+            for p in &self.points {
+                if other.points.contains(p) {
+                    pts.insert(p.clone());
+                }
+            }
+            Self { points: pts }
+        }
+        fn from(iter: Box<dyn Iterator<Item = Self::Point>>) -> Self {
+            Self {
+                points: iter.collect(),
+            }
+        }
+    }
+
+    impl IntoIterator for TestOpenSet {
+        type Item = TestPoint;
+        type IntoIter = std::collections::hash_set::IntoIter<TestPoint>;
+        fn into_iter(self) -> Self::IntoIter {
+            self.points.into_iter()
+        }
+    }
+
+    /// 0-cell
+    struct TestVertex {
+        point: TestPoint,
+    }
+    impl crate::cw::KCell<String, TestOpenSet> for TestVertex {
+        fn points(&self) -> HashSet<&TestPoint> {
+            HashSet::from([&self.point])
+        }
+        fn dimension(&self) -> usize {
+            0
+        }
+        fn boundary(&mut self) -> HashSet<TestPoint> {
+            HashSet::new()
+        }
+        fn attach(
+            &self,
+            _p: &TestPoint,
+            _skel: &mut crate::cw::Skeleton<String, TestOpenSet>,
+        ) -> TestPoint {
+            self.point.clone()
+        }
+        fn remove(&mut self, _set: HashSet<TestPoint>) -> bool {
+            false
+        }
+    }
+
+    /// 1-cell
+    struct TestEdge {
+        start: TestPoint,
+        end: TestPoint,
+        _id: String,
+        removed: HashSet<TestPoint>,
+    }
+    impl crate::cw::KCell<String, TestOpenSet> for TestEdge {
+        fn points(&self) -> HashSet<&TestPoint> {
+            HashSet::from([&self.start, &self.end])
+        }
+        fn dimension(&self) -> usize {
+            1
+        }
+        fn boundary(&mut self) -> HashSet<TestPoint> {
+            HashSet::from([self.start.clone(), self.end.clone()])
+        }
+        fn attach(
+            &self,
+            p: &TestPoint,
+            _skel: &mut crate::cw::Skeleton<String, TestOpenSet>,
+        ) -> TestPoint {
+            if p == &self.start {
+                self.start.clone()
+            } else {
+                self.end.clone()
+            }
+        }
+        fn remove(&mut self, set: HashSet<TestPoint>) -> bool {
+            self.removed = set;
+            !self.removed.is_empty()
+        }
+    }
+
+    #[test]
+    fn sheaf_init_is_empty() {
+        let sheaf: crate::sheaf::CellularSheaf<String, TestOpenSet> =
+            crate::sheaf::CellularSheaf::init(DType::F32, Device::Cpu);
+        assert_eq!(sheaf.cw.cells.len(), 0);
+        assert_eq!(sheaf.section_spaces.len(), 0);
+        assert_eq!(sheaf.restrictions.len(), 0);
+    }
+
+    #[test]
+    fn attach_cells_and_sections() {
+        let mut sheaf =
+            crate::sheaf::CellularSheaf::<String, TestOpenSet>::init(DType::F32, Device::Cpu);
+
+        // ---- vertex ------------------------------------------------------
+        let vertex = TestVertex {
+            point: TestPoint("A".into()),
+        };
+        let mut v_sec = crate::sheaf::Sections::new(1, &Device::Cpu, DType::F32).unwrap();
+        let v_data = Tensor::from_vec(vec![1f32], &[1, 1], &Device::Cpu).unwrap();
+        v_sec.add_section_data(v_data.clone()).unwrap();
+        sheaf.attach(Box::new(vertex), Some(v_sec), 1).unwrap();
+        assert_eq!(sheaf.section_spaces.len(), 1);
+
+        // ---- edge --------------------------------------------------------
+        let edge = TestEdge {
+            start: TestPoint("A".into()),
+            end: TestPoint("B".into()),
+            _id: "edge_AB".into(),
+            removed: HashSet::new(),
+        };
+        let mut e_sec = crate::sheaf::Sections::new(1, &Device::Cpu, DType::F32).unwrap();
+        let e_data = Tensor::from_vec(vec![0f32], &[1, 1], &Device::Cpu).unwrap();
+        e_sec.add_section_data(e_data.clone()).unwrap();
+        sheaf.attach(Box::new(edge), Some(e_sec), 1).unwrap();
+
+        assert_eq!(sheaf.cw.dimension, 1);
+        assert_eq!(sheaf.section_spaces.len(), 2);
+    }
+
+    #[test]
+    fn invalid_indices_error_out() {
+        let mut sheaf =
+            crate::sheaf::CellularSheaf::<String, TestOpenSet>::init(DType::F32, Device::Cpu);
+
+        // Requesting anything on an empty sheaf should bomb
+        assert!(matches!(
+            sheaf.update(0, Tensor::zeros(&[1, 1], DType::F32, &Device::Cpu).unwrap()),
+            Err(crate::error::MathError::InvalidCellIdx)
+        ));
+        assert!(matches!(
+            sheaf.k_coboundary(0),
+            Err(crate::error::MathError::InvalidCellIdx)
+        ));
+    }
+
+    // todo!() need to implement tests for the laplacian in cell complexes with three levels
+}

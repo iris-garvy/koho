@@ -247,8 +247,8 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
     pub fn local_down_laplacian(&self, cell_idx: usize) -> Result<Tensor, MathError> {
         let (down, _) = self.cw.filter_incident_by_dim(cell_idx)?;
         let mut matrix = None;
-        for i in down {
-            let restriction = self.restrictions.get(&(i, cell_idx));
+        for i in down.iter() {
+            let restriction = self.restrictions.get(&(*i, cell_idx));
             if restriction.is_none() {
                 return Err(MathError::NoRestrictionDefined);
             }
@@ -260,6 +260,9 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
                 matrix = Some(new.clone());
             }
             matrix = Some(matrix.unwrap().add(&new).map_err(MathError::Candle)?);
+        }
+        if down.is_empty() {
+            return Err(MathError::NoRestrictionDefined);
         }
         Ok(matrix.unwrap())
     }
