@@ -41,7 +41,7 @@ impl<T: Eq + Hash + Clone, O: OpenSet> Skeleton<T, O> {
         if incoming_dim - self.dimension as i64 > 1 {
             return Err(MathError::DimensionMismatch);
         }
-        if self.dimension == 0 && incoming_dim == 1 && self.cells.len() == 0 {
+        if self.dimension == 0 && incoming_dim == 1 && self.cells.is_empty() {
             return Err(MathError::CWUninitialized);
         }
         let mut cell = Cell::new(cell);

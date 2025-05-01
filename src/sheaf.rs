@@ -1,5 +1,5 @@
+use candle_core::{DType, Device, Result as CandleResult, Tensor};
 use std::collections::{HashMap, HashSet};
-use candle_core::{Device, Tensor, Result as CandleResult, DType};
 
 use crate::{
     cw::{KCell, Skeleton},
@@ -50,7 +50,7 @@ pub struct CellularSheaf<T: Eq + std::hash::Hash + Clone, O: OpenSet> {
     pub restrictions: HashMap<(usize, usize), Tensor>,
     pub global_sections: Vec<Sections>,
     device: Device,
-    dtype: DType
+    dtype: DType,
 }
 
 impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
@@ -61,7 +61,7 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
             restrictions: HashMap::new(),
             global_sections: Vec::new(),
             device,
-            dtype
+            dtype,
         }
     }
     /// Attaches a cell to the base cell complex, and spawns a section space in the cellular sheaf
@@ -71,8 +71,8 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
         data: Option<Sections>,
         section_dimension: usize,
     ) -> Result<(), MathError> {
-        self.section_spaces.push(if data.is_some() {
-            data.unwrap()
+        self.section_spaces.push(if let Some(item) = data {
+            item
         } else {
             Sections::new(section_dimension, &self.device, self.dtype).map_err(MathError::Candle)?
         });
@@ -80,11 +80,7 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
         Ok(())
     }
     /// Update section data
-    pub fn update(
-        &mut self,
-        cell_idx: usize,
-        val: Tensor,
-    ) -> Result<(), MathError> {
+    pub fn update(&mut self, cell_idx: usize, val: Tensor) -> Result<(), MathError> {
         if cell_idx >= self.section_spaces.len() {
             return Err(MathError::InvalidCellIdx);
         }
@@ -96,7 +92,9 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
         if cell_idx >= self.section_spaces.len() {
             return Err(MathError::InvalidCellIdx);
         }
-        self.section_spaces[cell_idx].add_section_data(val).map_err(MathError::Candle)?;
+        self.section_spaces[cell_idx]
+            .add_section_data(val)
+            .map_err(MathError::Candle)?;
         Ok(())
     }
 
@@ -117,10 +115,7 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
         Ok(())
     }
 
-    pub fn k_coboundary(
-        &self,
-        cell_idx: usize,
-    ) -> Result<Vec<(Tensor, usize)>, MathError> {
+    pub fn k_coboundary(&self, cell_idx: usize) -> Result<Vec<(Tensor, usize)>, MathError> {
         if cell_idx >= self.cw.cells.len() {
             return Err(MathError::InvalidCellIdx);
         }
@@ -132,9 +127,7 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
             }
             let restrict = restriction.unwrap();
             results.push((
-                restrict
-                    .mul(&self.section_spaces[cell_idx].data)
-                    .unwrap(),
+                restrict.mul(&self.section_spaces[cell_idx].data).unwrap(),
                 i,
             ));
         }
@@ -160,7 +153,11 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
                 return Err(MathError::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            let new = restrict.transpose(0, 1).map_err(MathError::Candle)?.mul(&cochain[i].0).map_err(MathError::Candle)?;
+            let new = restrict
+                .transpose(0, 1)
+                .map_err(MathError::Candle)?
+                .mul(&cochain[i].0)
+                .map_err(MathError::Candle)?;
             if results.is_none() {
                 results = Some(new.clone());
             }
@@ -184,8 +181,15 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
                 return Err(MathError::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            
-            results.push((restrict.transpose(0, 1).map_err(MathError::Candle)?.mul(&data).map_err(MathError::Candle)?, i));
+
+            results.push((
+                restrict
+                    .transpose(0, 1)
+                    .map_err(MathError::Candle)?
+                    .mul(data)
+                    .map_err(MathError::Candle)?,
+                i,
+            ));
         }
         Ok(results)
     }
@@ -227,7 +231,11 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
                 return Err(MathError::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            let new = restrict.transpose(0,1).map_err(MathError::Candle)?.mul(&restrict).map_err(MathError::Candle)?;
+            let new = restrict
+                .transpose(0, 1)
+                .map_err(MathError::Candle)?
+                .mul(restrict)
+                .map_err(MathError::Candle)?;
             if matrix.is_none() {
                 matrix = Some(new.clone());
             }
@@ -245,7 +253,9 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
                 return Err(MathError::NoRestrictionDefined);
             }
             let restrict = restriction.unwrap();
-            let new = restrict.mul(&restrict.transpose(0,1).map_err(MathError::Candle)?).map_err(MathError::Candle)?;
+            let new = restrict
+                .mul(&restrict.transpose(0, 1).map_err(MathError::Candle)?)
+                .map_err(MathError::Candle)?;
             if matrix.is_none() {
                 matrix = Some(new.clone());
             }
@@ -255,9 +265,9 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
     }
 
     pub fn local_laplacian(&self, cell_idx: usize) -> Result<Tensor, MathError> {
-        Ok(self
-            .local_up_laplacian(cell_idx)?
-            .add(&self.local_down_laplacian(cell_idx)?).map_err(MathError::Candle)?)
+        self.local_up_laplacian(cell_idx)?
+            .add(&self.local_down_laplacian(cell_idx)?)
+            .map_err(MathError::Candle)
     }
 
     pub fn k_laplacian(&self, k: usize) -> Result<Tensor, MathError> {
@@ -279,16 +289,17 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
             if global.is_none() {
                 global = Some(self.local_laplacian(i)?);
             }
-            global = Some(global.unwrap().add(&self.local_laplacian(i)?).map_err(MathError::Candle)?);
+            global = Some(
+                global
+                    .unwrap()
+                    .add(&self.local_laplacian(i)?)
+                    .map_err(MathError::Candle)?,
+            );
         }
         Ok(global.unwrap())
     }
 
-    pub fn check_glue(
-        &mut self,
-        start_cell: usize,
-        final_cell: usize,
-    ) -> Result<bool, MathError> {
+    pub fn check_glue(&mut self, start_cell: usize, final_cell: usize) -> Result<bool, MathError> {
         if start_cell >= self.cw.cells.len() || final_cell >= self.cw.cells.len() {
             return Err(MathError::InvalidCellIdx);
         }
@@ -301,11 +312,14 @@ impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
             return Err(MathError::NoRestrictionDefined);
         }
         let restrict = restriction.unwrap();
-        let eq = restrict.mul(&self.section_spaces[start_cell].data).unwrap().eq(&self.section_spaces[final_cell].data).map_err(MathError::Candle)?;
+        let eq = restrict
+            .mul(&self.section_spaces[start_cell].data)
+            .unwrap()
+            .eq(&self.section_spaces[final_cell].data)
+            .map_err(MathError::Candle)?;
         let sum = eq.sum_all().map_err(MathError::Candle)?;
         let count = sum.elem_count();
-        if sum.to_scalar::<u32>().map_err(MathError::Candle)? == count as u32
-        {
+        if sum.to_scalar::<u32>().map_err(MathError::Candle)? == count as u32 {
             return Ok(false);
         }
         Ok(true)

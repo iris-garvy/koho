@@ -15,5 +15,5 @@ pub enum MathError {
     BadCochain,
     NoCellsofDimensionK,
     NotInvertible,
-    Candle(Error)
+    Candle(Error),
 }

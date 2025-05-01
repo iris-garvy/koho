@@ -2,18 +2,12 @@ pub mod cw;
 pub mod error;
 pub mod sheaf;
 
-mod prelude {
-    use crate::cw::{KCell, Skeleton};
-    use crate::error::MathError;
-    use crate::sheaf::CellularSheaf;
-}
-
 #[cfg(test)]
 mod cw_tests {
     use std::collections::HashSet;
     use std::hash::Hash;
 
-    use crate::cw::{Cell, KCell, Skeleton};
+    use crate::cw::{KCell, Skeleton};
     use crate::error::MathError;
     use crate::sheaf::OpenSet;
 
