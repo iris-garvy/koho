@@ -182,7 +182,7 @@ impl<O: OpenSet> Skeleton<O> {
   /// 2. Finding boundary points and their images under the attachment map
   /// 3. Updating incidence relationships between cells
   /// 4. Updating the skeleton's dimension if needed
-  pub fn attach(&mut self, mut cell: Cell<O>) -> Result<(), MathError> {
+  pub fn attach(&mut self, mut cell: Cell<O>) -> Result<usize, MathError> {
     let incoming_dim = cell.dimension as i64;
     if incoming_dim - self.dimension as i64 > 1 {
       return Err(MathError::DimensionMismatch);
@@ -191,18 +191,18 @@ impl<O: OpenSet> Skeleton<O> {
     if cell.dimension < self.cells.len() {
       self.cells[cell.dimension].push(cell);
     }
-    Ok(())
+    Ok(self.cells[incoming_dim as usize].len())
   }
 
   /// Fetches the cell information containing a particular `Point`.
   ///
   /// This operation allows for point-based lookup within the cell complex,
   /// which is useful for navigating the topological structure.
-  pub fn fetch_cell_by_point(&self, point: O::Point) -> Result<(&Cell<O>, usize), MathError> {
+  pub fn fetch_cell_by_point(&self, point: O::Point) -> Result<(&Cell<O>, usize, usize), MathError> {
     for i in 0..self.cells.len() {
       for j in 0..self.cells[i].len() {
         if self.cells[i][j].cell.contains(&point) {
-          return Ok((&self.cells[i][j], i));
+          return Ok((&self.cells[i][j], i, j));
         };
       }
     }
@@ -369,7 +369,7 @@ mod tests {
 
     let found = sk.fetch_cell_by_point(pt.clone());
     assert!(found.is_ok());
-    let (c_ref, dim) = found.unwrap();
+    let (c_ref, dim, _cell_id) = found.unwrap();
     assert_eq!(dim, 0);
     assert!(c_ref.cell.contains(&pt));
 
