@@ -12,7 +12,7 @@ use crate::{
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Point<T: Eq + std::hash::Hash + Clone + Sized>(T);
 
-pub struct Section(Vector);
+pub struct Section(pub Vector);
 
 impl Section {
     pub fn new<T: WithDType>(
@@ -30,8 +30,8 @@ pub struct CellularSheaf<O: OpenSet> {
     pub restrictions: HashMap<(usize, usize, usize, usize), Matrix>,
     pub interlinked: HashMap<(usize, usize, usize, usize), i8>,
     pub global_sections: Vec<Section>,
-    device: Device,
-    dtype: DType,
+    pub device: Device,
+    pub dtype: DType,
 }
 
 impl<O: OpenSet> CellularSheaf<O> {
@@ -94,7 +94,7 @@ impl<O: OpenSet> CellularSheaf<O> {
         Ok(())
     }
 
-    pub fn k_coboundary(
+    fn k_coboundary(
         &self,
         k: usize,
         k_cochain: Vec<Vector>,
@@ -151,7 +151,7 @@ impl<O: OpenSet> CellularSheaf<O> {
     }
 
     /// Computes the adjoint of the k-th coboundary operator ((delta^k)*).
-    pub fn k_adjoint_coboundary(
+    fn k_adjoint_coboundary(
         &self,
         k: usize,
         k_coboundary_output: Vec<Vector>,
@@ -215,34 +215,38 @@ impl<O: OpenSet> CellularSheaf<O> {
     }
 
     /// Retrieves the cochain (Vec<Vector>) for a given dimension k.
-    pub fn get_k_cochain(&self, k: usize) -> Result<Vec<Vector>, MathError> {
+    pub fn get_k_cochain(&self, k: usize) -> Result<Matrix, MathError> {
         if k >= self.section_spaces.len() {
             return Err(MathError::DimensionMismatch);
         }
         let k_sections = &self.section_spaces[k];
         let k_cochain: Vec<Vector> = k_sections.iter().map(|section| section.0.clone()).collect();
-
-        Ok(k_cochain)
+        Matrix::from_vecs(k_cochain).map_err(MathError::Candle)
     }
 
     pub fn k_hodge_laplacian(
         &self,
         k: usize,
         k_cochain: Matrix,
-        k_stalk_dim: usize,
-        k_plus_stalk_dim: usize,
-        k_minus_stalk_dim: usize,
+        down_included: bool,
     ) -> Result<Matrix, MathError> {
         let vecs = k_cochain.to_vectors().map_err(MathError::Candle)?;
+
+        let k_plus_stalk_dim = self.section_spaces[k + 1][0].0.dimension();
+        let k_stalk_dim = self.section_spaces[k][0].0.dimension();
+        let k_minus_stalk_dim = self.section_spaces[k - 1][0].0.dimension();
+
         let up_a = self.k_coboundary(k, vecs.clone(), k_plus_stalk_dim)?;
         let up_b = self.k_adjoint_coboundary(k, up_a, k_stalk_dim)?;
-
-        let down_a = self.k_adjoint_coboundary(k, vecs, k_minus_stalk_dim)?;
-        let down_b = self.k_coboundary(k, down_a, k_stalk_dim)?;
-        let out = Matrix::from_vecs(up_b)
-            .map_err(MathError::Candle)?
-            .add(&Matrix::from_vecs(down_b).map_err(MathError::Candle)?)
-            .map_err(MathError::Candle)?;
-        Ok(out)
+        if down_included {
+            let down_a = self.k_adjoint_coboundary(k, vecs, k_minus_stalk_dim)?;
+            let down_b = self.k_coboundary(k, down_a, k_stalk_dim)?;
+            let out = Matrix::from_vecs(up_b)
+                .map_err(MathError::Candle)?
+                .add(&Matrix::from_vecs(down_b).map_err(MathError::Candle)?)
+                .map_err(MathError::Candle)?;
+            return Ok(out);
+        }
+        Matrix::from_vecs(up_b).map_err(MathError::Candle)
     }
 }
