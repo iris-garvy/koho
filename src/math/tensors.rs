@@ -82,8 +82,8 @@ impl Vector {
 #[derive(Debug, Clone)]
 pub struct Matrix {
     pub tensor: Tensor,
-    device: Device,
-    dtype: DType,
+    pub device: Device,
+    pub dtype: DType,
 }
 
 impl Matrix {
@@ -262,6 +262,12 @@ impl Matrix {
         }
 
         Ok(cols_vectors)
+    }
+
+    /// Generates a new random matrix with elements sampled from a standard normal distribution (mean 0, std dev 1).
+    pub fn rand(rows: usize, cols: usize, device: Device, dtype: DType) -> Result<Self> {
+        let tensor = Tensor::randn(0.0f32, 1.0f32, (rows, cols), &device)?.to_dtype(dtype)?;
+        Self::new(tensor, device, dtype)
     }
 }
 
