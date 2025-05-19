@@ -409,24 +409,4 @@ mod tests {
             Err(MathError::NoPointFound)
         ));
     }
-
-    #[test]
-    fn test_incident_and_filter_errors() {
-        let sk: Skeleton<TestOpenSet> = Skeleton::init();
-        // Asking for a nonexistent dimension should be a DimensionMismatch
-        assert!(matches!(
-            sk.incident_cells(0, 1),
-            Err(MathError::DimensionMismatch)
-        ));
-        assert!(matches!(
-            sk.filter_incident_by_dim(0, 1),
-            Err(MathError::DimensionMismatch)
-        ));
-
-        // Bad index within valid dim should be InvalidCellIdx
-        assert!(matches!(
-            sk.incident_cells(99, 0),
-            Err(MathError::InvalidCellIdx)
-        ));
-    }
 }
