@@ -234,20 +234,22 @@ impl<O: OpenSet> Skeleton<O> {
   /// This distinction is important for homology and cohomology calculations.
   pub fn filter_incident_by_dim(
     &self,
+    k: usize,
     cell_idx: usize,
-    cell_dimension: usize,
-  ) -> Result<HashSet<(usize, usize)>, MathError> {
-    if cell_dimension >= self.cells.len() {
+  ) -> Result<(Vec<(usize, usize)>, Vec<(usize, usize)>), MathError> {
+    if k >= self.cells.len() {
       return Err(MathError::DimensionMismatch);
     }
-    if cell_idx >= self.cells[cell_dimension].len() {
+    if cell_idx >= self.cells[k].len() {
       return Err(MathError::InvalidCellIdx);
     }
-    let incidents = &self.cells[cell_dimension][cell_idx].incidents;
-    let mut lower = HashSet::new();
+    let incidents = &self.cells[k][cell_idx].incidents;
+    let mut lower = (Vec::new(), Vec::new());
     for (i, j) in incidents {
-      if (cell_dimension as i64 - self.cells[*i][*j].dimension as i64).abs() == 1 {
-        lower.insert((*i, *j));
+      if k as i64 - self.cells[*i][*j].dimension as i64 == 1 {
+        lower.0.push((*i, *j));
+      } else if k as i64 - self.cells[*i][*j].dimension as i64 == -1 {
+        lower.1.push((*i, *j));
       }
     }
     Ok(lower)

@@ -1,8 +1,8 @@
-use candle_core::{DType, Device, Result as CandleResult, Tensor, WithDType};
+use candle_core::{DType, Device, Error, Result as CandleResult, Tensor, WithDType};
 use std::collections::HashMap;
 
 use crate::{
-    error::MathError, math::{cell::{Cell, OpenSet, Skeleton}, tensors::Vector},
+    error::MathError, math::{cell::{Cell, OpenSet, Skeleton}, tensors::{Matrix, Vector}},
 };
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -16,9 +16,10 @@ impl Section {
     }
 }
 pub struct CellularSheaf<O: OpenSet> {
-    pub cw: Skeleton<O>,
+    pub cells: Skeleton<O>,
     pub section_spaces: Vec<Vec<Section>>,
-    pub restrictions: HashMap<(usize, usize, usize), Tensor>,
+    pub restrictions: HashMap<(usize, usize, usize, usize), Matrix>,
+    pub interlinked: HashMap<(usize, usize, usize, usize), i8>,
     pub global_sections: Vec<Section>,
     device: Device,
     dtype: DType,
@@ -27,9 +28,10 @@ pub struct CellularSheaf<O: OpenSet> {
 impl<O: OpenSet> CellularSheaf<O> {
     pub fn init(dtype: DType, device: Device) -> Self {
         Self {
-            cw: Skeleton::init(),
+            cells: Skeleton::init(),
             section_spaces: Vec::new(),
             restrictions: HashMap::new(),
+            interlinked: HashMap::new(),
             global_sections: Vec::new(),
             device,
             dtype,
@@ -42,7 +44,7 @@ impl<O: OpenSet> CellularSheaf<O> {
         data: Section,
     ) -> Result<(usize, usize), MathError> {
         let k = cell.dimension;
-        let idx = self.cw.attach(cell)?;
+        let idx = self.cells.attach(cell)?;
         let current_dim = self.section_spaces.len();
         if current_dim < k {
             return Err(MathError::DimensionMismatch)
@@ -64,24 +66,50 @@ impl<O: OpenSet> CellularSheaf<O> {
         &mut self,
         k: usize,
         cell_id: usize,
+        final_k: usize,
         final_cell: usize,
-        map: Tensor,
+        map: Matrix,
+        interlink: i8
     ) -> Result<(), MathError> {
-        if cell_id >= self.cw.cells[k].len() || final_cell >= self.cw.cells[k].len() {
+        if cell_id >= self.cells.cells[k].len() || final_cell >= self.cells.cells[k].len() {
             return Err(MathError::InvalidCellIdx);
         }
-        if self.cw.cells[k][cell_id].dimension >= self.cw.cells[k][final_cell].dimension
+        if self.cells.cells[k][cell_id].dimension >= self.cells.cells[k][final_cell].dimension
         {
             return Err(MathError::NoRestrictionDefined);
         }
-        self.restrictions.insert((k, cell_id, final_cell), map);
+        self.restrictions.insert((k, cell_id, final_k, final_cell), map);
+        self.interlinked.insert((k, cell_id, final_k, final_cell), interlink);
         Ok(())
     }
 
     pub fn k_coboundary(
         &self,
-        k_cochain: Tensor 
-    ) {
-
+        k: usize,
+        stalk_dim: usize
+    ) -> Result<Matrix, MathError> {
+        let mut output = Vec::new();
+        for (i, _) in self.section_spaces[k].iter().enumerate() {
+            let (_, upper) = &self.cells.filter_incident_by_dim(k, i)?;
+            let mut rows = Vector::from_slice(&vec![0f32; stalk_dim], stalk_dim, self.device.clone(), self.dtype).map_err(MathError::Candle)?;
+            for (j, k_plus) in upper {
+                let section = &self.section_spaces[*j][*k_plus];
+                let stalk_dim = self.section_spaces[*j][*k_plus].0.dimension();
+                let mut acc = Vector::from_slice(&vec![0f32; stalk_dim], stalk_dim, self.device.clone(), self.dtype).map_err(MathError::Candle)?;
+                
+                if let Some(r) = self.restrictions.get(&(*j, *k_plus, k, i)) {
+                    // R: Matrix mapping section_spaces[k][i] → section_spaces[k+1][j]
+                    let mut piece = r.matvec(&section.0).map_err(MathError::Candle)?;
+                    if *self.interlinked.get(&(*j, *k_plus, k, i)).unwrap_or(&1) < 0 {
+                        piece = piece.scale(-1.0).map_err(MathError::Candle)?;
+                    }
+                    acc = acc.add(&piece).map_err(MathError::Candle)?;
+                }
+                rows = rows.add(&acc).map_err(MathError::Candle)?;
+            }
+            output.push(rows);
+        }
+        Matrix::from_vecs(output).map_err(MathError::Candle)
     }
+
 }

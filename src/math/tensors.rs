@@ -64,7 +64,7 @@ impl Vector {
 
 #[derive(Debug, Clone)]
 pub struct Matrix {
-    tensor: Tensor,
+    pub tensor: Tensor,
     device: Device,
     dtype: DType,
 }
@@ -91,7 +91,7 @@ impl Matrix {
     }
 
     pub fn from_vecs(
-        vecs: &[Vector]
+        vecs: Vec<Vector>
     ) -> Result<Self> {
         if vecs.is_empty() {
             return Err(Error::Msg("Cannot create a matrix from an empty list of vectors.".into()));
@@ -165,6 +165,22 @@ impl Matrix {
         })
     }
 
+    pub fn matvec(&self, other: &Vector) -> Result<Vector> {
+        if self.cols() != other.dimension() {
+            return Err(Error::Msg(format!(
+                "Matrix multiplication dimension mismatch: self_cols ({}) != other_rows ({})",
+                self.cols(),
+                other.dimension()
+            )));
+        }
+        let result_tensor = self.tensor.matmul(other.inner())?;
+        Ok(Vector {
+            tensor: result_tensor,
+            device: self.device.clone(),
+            dtype: self.dtype,
+        })
+    }
+
     /// Transposes the matrix.
     pub fn transpose(&self) -> Result<Self> {
         let result_tensor = self.tensor.transpose(0, 1)?;
@@ -194,15 +210,12 @@ impl Matrix {
 
     /// Scales the matrix by a scalar.
     pub fn scale<T: WithDType>(&self, scalar: T) -> Result<Self> {
-        if scalar.to_scalar().dtype() == self.dtype {
-            let tensor = self.tensor.clone().to_dtype(DType::F64)?;
-            return Ok(Self {
-                tensor: (tensor * scalar.to_scalar().to_f64())?,
-                device: self.device.clone(),
-                dtype: self.dtype
-            })
-        }
-        Err(Error::DTypeMismatchBinaryOp { lhs: scalar.to_scalar().dtype(), rhs: self.dtype, op: "scalar multiply" })
+        let tensor = self.tensor.clone().to_dtype(DType::F64)?;
+        Ok(Self {
+            tensor: (tensor * scalar.to_scalar().to_f64())?,
+            device: self.device.clone(),
+            dtype: self.dtype
+        })  
     }
 
     /// Computes the Frobenius norm of the matrix.
