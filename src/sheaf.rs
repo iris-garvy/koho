@@ -1,330 +1,248 @@
-use candle_core::{DType, Device, Result as CandleResult, Tensor};
-use std::collections::{HashMap, HashSet};
+use candle_core::{DType, Device, Result as CandleResult, WithDType};
+use std::collections::HashMap;
 
 use crate::{
-    cw::{KCell, Skeleton},
     error::MathError,
+    math::{
+        cell::{Cell, OpenSet, Skeleton},
+        tensors::{Matrix, Vector},
+    },
 };
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Point<T: Eq + std::hash::Hash + Clone + Sized>(T);
 
-pub trait OpenSet: IntoIterator<Item = Self::Point> + Clone {
-    type Point: Eq + std::hash::Hash;
-    fn union(&self, other: Self) -> Self;
-    fn intersection(&self, other: Self) -> Self;
-    fn from(iter: Box<dyn Iterator<Item = Self::Point>>) -> Self;
-}
+pub struct Section(Vector);
 
-pub trait Topology {
-    type Point;
-    type OpenSet: OpenSet<Point = Self::Point>;
-    fn points(&self) -> HashSet<Self::Point>;
-    fn neighborhoods(&self, point: Self::Point) -> HashSet<Self::OpenSet>;
-    fn is_open(&self, set: Self::OpenSet) -> bool;
-}
-
-pub struct Sections {
-    pub data: Tensor,
-    pub bases: Option<Tensor>,
-}
-
-impl Sections {
-    pub fn new(dim: usize, device: &Device, dtype: DType) -> CandleResult<Self> {
-        Ok(Self {
-            data: Tensor::zeros(&[0, dim], dtype, device)?,
-            bases: None,
-        })
-    }
-    pub fn add_bases(&mut self, bases: Tensor) {
-        self.bases = Some(bases)
-    }
-    pub fn add_section_data(&mut self, section: Tensor) -> CandleResult<()> {
-        self.data = Tensor::cat(&[self.data.clone(), section], 0)?;
-        Ok(())
+impl Section {
+    pub fn new<T: WithDType>(
+        tensor: &[T],
+        dimension: usize,
+        device: Device,
+        dtype: DType,
+    ) -> CandleResult<Self> {
+        Ok(Self(Vector::from_slice(tensor, dimension, device, dtype)?))
     }
 }
-pub struct CellularSheaf<T: Eq + std::hash::Hash + Clone, O: OpenSet> {
-    pub cw: Skeleton<T, O>,
-    pub section_spaces: Vec<Sections>,
-    pub restrictions: HashMap<(usize, usize), Tensor>,
-    pub global_sections: Vec<Sections>,
+pub struct CellularSheaf<O: OpenSet> {
+    pub cells: Skeleton<O>,
+    pub section_spaces: Vec<Vec<Section>>,
+    pub restrictions: HashMap<(usize, usize, usize, usize), Matrix>,
+    pub interlinked: HashMap<(usize, usize, usize, usize), i8>,
+    pub global_sections: Vec<Section>,
     device: Device,
     dtype: DType,
 }
 
-impl<T: Eq + std::hash::Hash + Clone, O: OpenSet> CellularSheaf<T, O> {
+impl<O: OpenSet> CellularSheaf<O> {
     pub fn init(dtype: DType, device: Device) -> Self {
         Self {
-            cw: Skeleton::init(),
+            cells: Skeleton::init(),
             section_spaces: Vec::new(),
             restrictions: HashMap::new(),
+            interlinked: HashMap::new(),
             global_sections: Vec::new(),
             device,
             dtype,
         }
     }
     /// Attaches a cell to the base cell complex, and spawns a section space in the cellular sheaf
-    pub fn attach(
-        &mut self,
-        cell: Box<dyn KCell<T, O>>,
-        data: Option<Sections>,
-        section_dimension: usize,
-    ) -> Result<(), MathError> {
-        self.section_spaces.push(if let Some(item) = data {
-            item
-        } else {
-            Sections::new(section_dimension, &self.device, self.dtype).map_err(MathError::Candle)?
-        });
-        self.cw.attach(cell)?;
-        Ok(())
+    pub fn attach(&mut self, cell: Cell<O>, data: Section) -> Result<(usize, usize), MathError> {
+        let k = cell.dimension;
+        let idx = self.cells.attach(cell)?;
+        let current_dim = self.section_spaces.len();
+        if current_dim < k {
+            return Err(MathError::DimensionMismatch);
+        } else if current_dim == k {
+            self.section_spaces.push(vec![data]);
+        }
+        Ok((k, idx))
     }
     /// Update section data
-    pub fn update(&mut self, cell_idx: usize, val: Tensor) -> Result<(), MathError> {
+    pub fn update_stalk(
+        &mut self,
+        k: usize,
+        cell_idx: usize,
+        val: Vector,
+    ) -> Result<(), MathError> {
         if cell_idx >= self.section_spaces.len() {
             return Err(MathError::InvalidCellIdx);
         }
-        self.section_spaces[cell_idx].data = val;
-        Ok(())
-    }
-
-    pub fn new_data(&mut self, cell_idx: usize, val: Tensor) -> Result<(), MathError> {
-        if cell_idx >= self.section_spaces.len() {
-            return Err(MathError::InvalidCellIdx);
-        }
-        self.section_spaces[cell_idx]
-            .add_section_data(val)
-            .map_err(MathError::Candle)?;
+        self.section_spaces[k][cell_idx].0 = val;
         Ok(())
     }
 
     pub fn set_restriction(
         &mut self,
-        start_cell: usize,
+        k: usize,
+        cell_id: usize,
+        final_k: usize,
         final_cell: usize,
-        map: Tensor,
+        map: Matrix,
+        interlink: i8,
     ) -> Result<(), MathError> {
-        if start_cell >= self.cw.cells.len() || final_cell >= self.cw.cells.len() {
+        if cell_id >= self.cells.cells[k].len() || final_cell >= self.cells.cells[k].len() {
             return Err(MathError::InvalidCellIdx);
         }
-        if self.cw.cells[start_cell].cell.dimension() >= self.cw.cells[final_cell].cell.dimension()
-        {
+        if self.cells.cells[k][cell_id].dimension >= self.cells.cells[k][final_cell].dimension {
             return Err(MathError::NoRestrictionDefined);
         }
-        self.restrictions.insert((start_cell, final_cell), map);
+        self.restrictions
+            .insert((k, cell_id, final_k, final_cell), map);
+        self.interlinked
+            .insert((k, cell_id, final_k, final_cell), interlink);
         Ok(())
     }
 
-    pub fn k_coboundary(&self, cell_idx: usize) -> Result<Vec<(Tensor, usize)>, MathError> {
-        if cell_idx >= self.cw.cells.len() {
-            return Err(MathError::InvalidCellIdx);
-        }
-        let mut results = Vec::new();
-        for i in self.cw.filter_incident_by_dim(cell_idx)?.1 {
-            let restriction = self.restrictions.get(&(cell_idx, i));
-            if restriction.is_none() {
-                return Err(MathError::NoRestrictionDefined);
-            }
-            let restrict = restriction.unwrap();
-            results.push((
-                restrict.mul(&self.section_spaces[cell_idx].data).unwrap(),
-                i,
-            ));
-        }
-        Ok(results)
-    }
-
-    pub fn k_coboundary_adjoint(
+    pub fn k_coboundary(
         &self,
-        cell_idx: usize,
-        cochain: Vec<(Tensor, usize)>,
-    ) -> Result<Tensor, MathError> {
-        if cell_idx >= self.cw.cells.len() {
-            return Err(MathError::InvalidCellIdx);
-        }
-        let idxs = cochain.iter().map(|(_, x)| *x).collect::<Vec<_>>();
-        let mut results = None;
-        for i in idxs {
-            if !self.cw.filter_incident_by_dim(cell_idx)?.1.contains(&i) {
-                return Err(MathError::BadCochain);
-            };
-            let restriction = self.restrictions.get(&(cell_idx, i));
-            if restriction.is_none() {
-                return Err(MathError::NoRestrictionDefined);
-            }
-            let restrict = restriction.unwrap();
-            let new = restrict
-                .transpose(0, 1)
-                .map_err(MathError::Candle)?
-                .mul(&cochain[i].0)
-                .map_err(MathError::Candle)?;
-            if results.is_none() {
-                results = Some(new.clone());
-            }
-            results = Some(results.unwrap().add(&new).map_err(MathError::Candle)?)
-        }
-        Ok(results.unwrap())
-    }
-
-    pub fn k_minus_1_coboundary_adjoint(
-        &self,
-        cell_idx: usize,
-    ) -> Result<Vec<(Tensor, usize)>, MathError> {
-        if cell_idx >= self.cw.cells.len() {
-            return Err(MathError::InvalidCellIdx);
-        }
-        let data = &self.section_spaces[cell_idx].data;
-        let mut results = Vec::new();
-        for i in self.cw.filter_incident_by_dim(cell_idx)?.0 {
-            let restriction = self.restrictions.get(&(i, cell_idx));
-            if restriction.is_none() {
-                return Err(MathError::NoRestrictionDefined);
-            }
-            let restrict = restriction.unwrap();
-
-            results.push((
-                restrict
-                    .transpose(0, 1)
-                    .map_err(MathError::Candle)?
-                    .mul(data)
-                    .map_err(MathError::Candle)?,
-                i,
-            ));
-        }
-        Ok(results)
-    }
-
-    pub fn k_minus_1_coboundary(
-        &self,
-        cell_idx: usize,
-        cochain: Vec<(Tensor, usize)>,
-    ) -> Result<Tensor, MathError> {
-        if cell_idx >= self.cw.cells.len() {
-            return Err(MathError::InvalidCellIdx);
-        }
-        let idxs = cochain.iter().map(|(_, x)| *x).collect::<Vec<_>>();
-        let mut results = None;
-        for i in idxs {
-            if !self.cw.filter_incident_by_dim(cell_idx)?.0.contains(&i) {
-                return Err(MathError::BadCochain);
-            };
-            let restriction = self.restrictions.get(&(i, cell_idx));
-            if restriction.is_none() {
-                return Err(MathError::NoRestrictionDefined);
-            }
-            let restrict = restriction.unwrap();
-            let new = restrict.mul(&cochain[i].0).map_err(MathError::Candle)?;
-            if results.is_none() {
-                results = Some(new.clone());
-            }
-            results = Some(results.unwrap().add(&new).map_err(MathError::Candle)?);
-        }
-        Ok(results.unwrap())
-    }
-
-    pub fn local_up_laplacian(&self, cell_idx: usize) -> Result<Tensor, MathError> {
-        let (_, up) = self.cw.filter_incident_by_dim(cell_idx)?;
-        let mut matrix = None;
-        for i in up {
-            let restriction = self.restrictions.get(&(cell_idx, i));
-            if restriction.is_none() {
-                return Err(MathError::NoRestrictionDefined);
-            }
-            let restrict = restriction.unwrap();
-            let new = restrict
-                .transpose(0, 1)
-                .map_err(MathError::Candle)?
-                .mul(restrict)
-                .map_err(MathError::Candle)?;
-            if matrix.is_none() {
-                matrix = Some(new.clone());
-            }
-            matrix = Some(matrix.unwrap().add(&new).map_err(MathError::Candle)?);
-        }
-        Ok(matrix.unwrap())
-    }
-
-    pub fn local_down_laplacian(&self, cell_idx: usize) -> Result<Tensor, MathError> {
-        let (down, _) = self.cw.filter_incident_by_dim(cell_idx)?;
-        let mut matrix = None;
-        for i in down.iter() {
-            let restriction = self.restrictions.get(&(*i, cell_idx));
-            if restriction.is_none() {
-                return Err(MathError::NoRestrictionDefined);
-            }
-            let restrict = restriction.unwrap();
-            let new = restrict
-                .mul(&restrict.transpose(0, 1).map_err(MathError::Candle)?)
-                .map_err(MathError::Candle)?;
-            if matrix.is_none() {
-                matrix = Some(new.clone());
-            }
-            matrix = Some(matrix.unwrap().add(&new).map_err(MathError::Candle)?);
-        }
-        if down.is_empty() {
-            return Err(MathError::NoRestrictionDefined);
-        }
-        Ok(matrix.unwrap())
-    }
-
-    pub fn local_laplacian(&self, cell_idx: usize) -> Result<Tensor, MathError> {
-        self.local_up_laplacian(cell_idx)?
-            .add(&self.local_down_laplacian(cell_idx)?)
-            .map_err(MathError::Candle)
-    }
-
-    pub fn k_laplacian(&self, k: usize) -> Result<Tensor, MathError> {
-        let mut valid = Vec::new();
-        self.cw.cells.iter().enumerate().for_each(|(i, x)| {
-            if x.cell.dimension() == k {
-                valid.push(i)
-            }
-        });
-        let dim = self.section_spaces[valid[0]].data.dims()[0];
-        if valid.is_empty() {
-            return Err(MathError::NoCellsofDimensionK);
-        }
-        let mut global = None;
-        for i in valid {
-            if self.section_spaces[i].data.dims()[0] != dim {
-                return Err(MathError::DimensionMismatch);
-            }
-            if global.is_none() {
-                global = Some(self.local_laplacian(i)?);
-            }
-            global = Some(
-                global
-                    .unwrap()
-                    .add(&self.local_laplacian(i)?)
-                    .map_err(MathError::Candle)?,
-            );
-        }
-        Ok(global.unwrap())
-    }
-
-    pub fn check_glue(&mut self, start_cell: usize, final_cell: usize) -> Result<bool, MathError> {
-        if start_cell >= self.cw.cells.len() || final_cell >= self.cw.cells.len() {
-            return Err(MathError::InvalidCellIdx);
-        }
-        if self.cw.cells[start_cell].cell.dimension() <= self.cw.cells[final_cell].cell.dimension()
-        {
+        k: usize,
+        k_cochain: Vec<Vector>,
+        stalk_dim_output: usize,
+    ) -> Result<Vec<Vector>, MathError> {
+        let num_k_plus_1_cells = self.cells.cells.get(k + 1).map_or(0, |cells| cells.len());
+        if num_k_plus_1_cells == 0 && k + 1 < self.cells.cells.len() {
+            return Ok(Vec::new());
+        } else if k + 1 >= self.cells.cells.len() {
             return Err(MathError::DimensionMismatch);
         }
-        let restriction = self.restrictions.get(&(start_cell, final_cell));
-        if restriction.is_none() {
-            return Err(MathError::NoRestrictionDefined);
-        }
-        let restrict = restriction.unwrap();
-        let eq = restrict
-            .mul(&self.section_spaces[start_cell].data)
-            .unwrap()
-            .eq(&self.section_spaces[final_cell].data)
+        let mut output_k_plus_1_cochain = vec![
+            Vector::from_slice(
+                &vec![0f32; stalk_dim_output],
+                stalk_dim_output,
+                self.device.clone(),
+                self.dtype
+            )
             .map_err(MathError::Candle)?;
-        let sum = eq.sum_all().map_err(MathError::Candle)?;
-        let count = sum.elem_count();
-        if sum.to_scalar::<u32>().map_err(MathError::Candle)? == count as u32 {
-            return Ok(false);
+            num_k_plus_1_cells
+        ];
+        for (tau_idx, tau) in output_k_plus_1_cochain
+            .iter_mut()
+            .enumerate()
+            .take(num_k_plus_1_cells)
+        {
+            let tau_cell_dim = k + 1;
+            let (lower_incident_cells, _) =
+                &self.cells.filter_incident_by_dim(tau_cell_dim, tau_idx)?;
+            for (sigma_dim, sigma_idx) in lower_incident_cells {
+                if *sigma_dim != k {
+                    continue;
+                }
+                let x_sigma = &k_cochain[*sigma_idx];
+                if let Some(r) =
+                    self.restrictions
+                        .get(&(*sigma_dim, *sigma_idx, tau_cell_dim, tau_idx))
+                {
+                    let mut term = r.matvec(x_sigma).map_err(MathError::Candle)?;
+
+                    if let Some(incidence_sign) =
+                        self.interlinked
+                            .get(&(*sigma_dim, *sigma_idx, tau_cell_dim, tau_idx))
+                    {
+                        if *incidence_sign < 0 {
+                            term = term.scale(-1.0).map_err(MathError::Candle)?;
+                        }
+                    }
+                    *tau = tau.add(&term).map_err(MathError::Candle)?;
+                }
+            }
         }
-        Ok(true)
+        Ok(output_k_plus_1_cochain)
+    }
+
+    /// Computes the adjoint of the k-th coboundary operator ((delta^k)*).
+    pub fn k_adjoint_coboundary(
+        &self,
+        k: usize,
+        k_coboundary_output: Vec<Vector>,
+        stalk_dim_output: usize,
+    ) -> Result<Vec<Vector>, MathError> {
+        let num_k_cells = self.cells.cells.get(k).map_or(0, |cells| cells.len());
+        if num_k_cells == 0 && k < self.cells.cells.len() {
+            return Ok(Vec::new());
+        } else if k >= self.cells.cells.len() {
+            return Err(MathError::DimensionMismatch);
+        }
+
+        let mut output_k_cochain = vec![
+            Vector::from_slice(
+                &vec![0f32; stalk_dim_output],
+                stalk_dim_output,
+                self.device.clone(),
+                self.dtype
+            )
+            .map_err(MathError::Candle)?;
+            num_k_cells
+        ];
+
+        for (tau_idx, y_tau) in k_coboundary_output.iter().enumerate() {
+            let tau_cell_dim = k + 1;
+
+            let (lower_incident_cells, _) =
+                &self.cells.filter_incident_by_dim(tau_cell_dim, tau_idx)?;
+
+            for (sigma_dim, sigma_idx) in lower_incident_cells {
+                if *sigma_dim != k {
+                    continue;
+                }
+
+                if let Some(r) =
+                    self.restrictions
+                        .get(&(*sigma_dim, *sigma_idx, tau_cell_dim, tau_idx))
+                {
+                    let mut term = r
+                        .transpose()
+                        .map_err(MathError::Candle)?
+                        .matvec(y_tau)
+                        .map_err(MathError::Candle)?;
+
+                    if let Some(incidence_sign) =
+                        self.interlinked
+                            .get(&(*sigma_dim, *sigma_idx, tau_cell_dim, tau_idx))
+                    {
+                        if *incidence_sign < 0 {
+                            term = term.scale(-1.0).map_err(MathError::Candle)?;
+                        }
+                    }
+
+                    output_k_cochain[*sigma_idx] = output_k_cochain[*sigma_idx]
+                        .add(&term)
+                        .map_err(MathError::Candle)?;
+                }
+            }
+        }
+        Ok(output_k_cochain)
+    }
+
+    /// Retrieves the cochain (Vec<Vector>) for a given dimension k.
+    pub fn get_k_cochain(&self, k: usize) -> Result<Vec<Vector>, MathError> {
+        if k >= self.section_spaces.len() {
+            return Err(MathError::DimensionMismatch);
+        }
+        let k_sections = &self.section_spaces[k];
+        let k_cochain: Vec<Vector> = k_sections.iter().map(|section| section.0.clone()).collect();
+
+        Ok(k_cochain)
+    }
+
+    pub fn k_hodge_laplacian(
+        &self,
+        k: usize,
+        k_cochain: Matrix,
+        k_stalk_dim: usize,
+        k_plus_stalk_dim: usize,
+        k_minus_stalk_dim: usize,
+    ) -> Result<Matrix, MathError> {
+        let vecs = k_cochain.to_vectors().map_err(MathError::Candle)?;
+        let up_a = self.k_coboundary(k, vecs.clone(), k_plus_stalk_dim)?;
+        let up_b = self.k_adjoint_coboundary(k, up_a, k_stalk_dim)?;
+
+        let down_a = self.k_adjoint_coboundary(k, vecs, k_minus_stalk_dim)?;
+        let down_b = self.k_coboundary(k, down_a, k_stalk_dim)?;
+        let out = Matrix::from_vecs(up_b)
+            .map_err(MathError::Candle)?
+            .add(&Matrix::from_vecs(down_b).map_err(MathError::Candle)?)
+            .map_err(MathError::Candle)?;
+        Ok(out)
     }
 }
