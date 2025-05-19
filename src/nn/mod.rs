@@ -1,2 +1,4 @@
-pub mod activations;
-pub mod diffusion;
+pub mod activate;
+pub mod diffuse;
+pub mod loss;
+pub mod optimize;

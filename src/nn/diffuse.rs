@@ -3,14 +3,13 @@ use std::rc::Rc;
 use crate::{
     error::MathError,
     math::{cell::OpenSet, sheaf::CellularSheaf, tensors::Matrix},
-    nn::activations::Activations,
+    nn::activate::Activations,
 };
 
 pub struct DiffusionLayer<O: OpenSet> {
     sheaf: Rc<CellularSheaf<O>>,
     weights: Matrix,
     activation: Activations,
-    k: usize,
 }
 
 impl<O: OpenSet> DiffusionLayer<O> {
@@ -27,18 +26,17 @@ impl<O: OpenSet> DiffusionLayer<O> {
             sheaf,
             weights,
             activation,
-            k,
         })
     }
 
-    pub fn diffuse(&self, k_features: Matrix, down_included: bool) -> Result<Matrix, MathError> {
-        let weighted_feats = self
-            .weights
-            .matmul(&k_features)
-            .map_err(MathError::Candle)?;
-        let out = self
+    pub fn diffuse(&self, k: usize, k_features: Matrix, down_included: bool) -> Result<Matrix, MathError> {
+        let diff = self
             .sheaf
-            .k_hodge_laplacian(self.k, weighted_feats, down_included)?;
-        self.activation.activate(out).map_err(MathError::Candle)
+            .k_hodge_laplacian(k, k_features, down_included)?;
+        let weighted = self
+            .weights
+            .matmul(&diff)
+            .map_err(MathError::Candle)?;
+        self.activation.activate(weighted).map_err(MathError::Candle)
     }
 }
