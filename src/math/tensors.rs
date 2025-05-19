@@ -223,6 +223,23 @@ impl Matrix {
     pub fn frobenius_norm(&self) -> Result<Tensor> {
         self.tensor.sqr()?.sum_all()?.sqrt()
     }
+
+    pub fn to_vectors(&self) -> Result<Vec<Vector>> {
+        let (_, cols) = self.shape();
+        let mut cols_vectors = Vec::with_capacity(cols);
+
+        // Candle's `chunk` method can split a tensor along a dimension.
+        // Splitting along dim 0 (rows) into `rows` chunks will give each row.
+        let cols_tensors = self.tensor.chunk(cols, 1)?;
+
+        for col_tensor in cols_tensors {
+            // Each chunk will be a tensor of shape (1, cols). Reshape to (cols,) for Vector.
+            let reshaped_col = col_tensor.squeeze(1)?; // Squeeze out the 1 dimension
+            cols_vectors.push(Vector::new(reshaped_col, self.device.clone(), self.dtype.clone())?);
+        }
+
+        Ok(cols_vectors)
+    }
 }
 
 // Example Usage (requires a candle_core setup)
