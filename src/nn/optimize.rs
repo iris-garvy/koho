@@ -13,7 +13,7 @@ use candle_optimisers::{
 };
 use candle_optimisers::{Decay, Momentum};
 
-use crate::error::MathError;
+use crate::error::KohoError;
 
 /// Extra parameters passed as input during to the `Optimize` creation for the network.
 pub enum OptimizerParams {
@@ -215,9 +215,10 @@ impl Optimize {
         }
     }
 
-    pub fn into_inner(&mut self) -> Result<Vec<Var>, MathError> {
+    /// claims the mutated weights from the Optim enum structs.
+    pub fn into_inner(&mut self) -> Result<Vec<Var>, KohoError> {
         if self.optim.is_none() {
-            return Err(MathError::Msg(
+            return Err(KohoError::Msg(
                 "No optimizer step set currently".to_string(),
             ));
         }

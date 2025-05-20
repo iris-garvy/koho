@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+thiserror = "2.0.12"
 num-complex = "0.4.6"
 rand = "0.9.0"
 candle-core = "0.9.1"

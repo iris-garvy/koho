@@ -28,7 +28,7 @@
 
 use std::collections::HashSet;
 
-use crate::error::MathError;
+use crate::error::KohoError;
 
 /// `OpenSet` is a collection of `Point` equipped with `union` and `intersection` operations.
 ///
@@ -141,6 +141,7 @@ impl<O: OpenSet> Cell<O> {
         }
     }
 
+    /// Find all the boundary cells and push incidence indexes to neighbors and itself
     fn attach(&mut self, skeleton: &mut Skeleton<O>) {
         let boundary_set_correspondence = self.boundary_set.attach_boundary(skeleton);
         let max = skeleton.cells[self.dimension].len();
@@ -192,10 +193,10 @@ impl<O: OpenSet> Skeleton<O> {
     /// 2. Finding boundary points and their images under the attachment map
     /// 3. Updating incidence relationships between cells
     /// 4. Updating the skeleton's dimension if needed
-    pub fn attach(&mut self, mut cell: Cell<O>) -> Result<usize, MathError> {
+    pub fn attach(&mut self, mut cell: Cell<O>) -> Result<usize, KohoError> {
         let incoming_dim = cell.dimension as i64;
         if incoming_dim - self.dimension as i64 > 1 {
-            return Err(MathError::DimensionMismatch);
+            return Err(KohoError::DimensionMismatch);
         }
         cell.attach(self);
         if cell.dimension < self.cells.len() {
@@ -211,7 +212,7 @@ impl<O: OpenSet> Skeleton<O> {
     pub fn fetch_cell_by_point(
         &self,
         point: O::Point,
-    ) -> Result<(&Cell<O>, usize, usize), MathError> {
+    ) -> Result<(&Cell<O>, usize, usize), KohoError> {
         for i in 0..self.cells.len() {
             for j in 0..self.cells[i].len() {
                 if self.cells[i][j].cell.contains(&point) {
@@ -219,7 +220,7 @@ impl<O: OpenSet> Skeleton<O> {
                 };
             }
         }
-        Err(MathError::NoPointFound)
+        Err(KohoError::NoPointFound)
     }
 
     /// Returns the collection of all incident cells to the cell at index `cell_idx`.
@@ -230,12 +231,12 @@ impl<O: OpenSet> Skeleton<O> {
         &self,
         cell_idx: usize,
         cell_dimension: usize,
-    ) -> Result<&Vec<(usize, usize)>, MathError> {
+    ) -> Result<&Vec<(usize, usize)>, KohoError> {
         if cell_dimension >= self.cells.len() {
-            return Err(MathError::DimensionMismatch);
+            return Err(KohoError::DimensionMismatch);
         }
         if cell_idx >= self.cells[cell_dimension].len() {
-            return Err(MathError::InvalidCellIdx);
+            return Err(KohoError::InvalidCellIdx);
         }
         Ok(&self.cells[cell_dimension][cell_idx].incidents)
     }
@@ -249,12 +250,12 @@ impl<O: OpenSet> Skeleton<O> {
         &self,
         k: usize,
         cell_idx: usize,
-    ) -> Result<(IncidencePair, IncidencePair), MathError> {
+    ) -> Result<(IncidencePair, IncidencePair), KohoError> {
         if k >= self.cells.len() {
-            return Err(MathError::DimensionMismatch);
+            return Err(KohoError::DimensionMismatch);
         }
         if cell_idx >= self.cells[k].len() {
-            return Err(MathError::InvalidCellIdx);
+            return Err(KohoError::InvalidCellIdx);
         }
         let incidents = &self.cells[k][cell_idx].incidents;
         let mut lower = (Vec::new(), Vec::new());
@@ -273,7 +274,7 @@ impl<O: OpenSet> Skeleton<O> {
 mod tests {
     use std::collections::HashSet;
 
-    use super::{Attach, Cell, MathError, OpenSet, Skeleton};
+    use super::{Attach, Cell, KohoError, OpenSet, Skeleton};
 
     /// A trivial point type.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -383,7 +384,7 @@ mod tests {
         let mut sk: Skeleton<TestOpenSet> = Skeleton::init();
         // attaching a 2-cell onto a 0-skeleton should error
         let bad = Cell::new(TestOpenSet::new(vec![]), TestOpenSet::new(vec![]), 2);
-        assert!(matches!(sk.attach(bad), Err(MathError::DimensionMismatch)));
+        assert!(matches!(sk.attach(bad), Err(KohoError::DimensionMismatch)));
     }
 
     #[test]
@@ -406,7 +407,7 @@ mod tests {
         // Something I never added should error.
         assert!(matches!(
             sk.fetch_cell_by_point(TestPoint("Z")),
-            Err(MathError::NoPointFound)
+            Err(KohoError::NoPointFound)
         ));
     }
 }
