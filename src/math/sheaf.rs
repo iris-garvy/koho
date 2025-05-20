@@ -118,10 +118,10 @@ impl<O: OpenSet> CellularSheaf<O> {
         map: Matrix,
         interlink: i8,
     ) -> Result<(), KohoError> {
-        if cell_id >= self.cells.cells[k].len() || final_cell >= self.cells.cells[k].len() {
+        if cell_id >= self.cells.cells[k].len() || final_cell >= self.cells.cells[final_k].len() {
             return Err(KohoError::InvalidCellIdx);
         }
-        if self.cells.cells[k][cell_id].dimension >= self.cells.cells[k][final_cell].dimension {
+        if self.cells.cells[k][cell_id].dimension >= self.cells.cells[final_k][final_cell].dimension {
             return Err(KohoError::NoRestrictionDefined);
         }
         self.restrictions
@@ -313,11 +313,11 @@ impl<O: OpenSet> CellularSheaf<O> {
 
         let k_plus_stalk_dim = self.section_spaces[k + 1][0].0.dimension();
         let k_stalk_dim = self.section_spaces[k][0].0.dimension();
-        let k_minus_stalk_dim = self.section_spaces[k - 1][0].0.dimension();
-
+        
         let up_a = self.k_coboundary(k, vecs.clone(), k_plus_stalk_dim)?;
         let up_b = self.k_adjoint_coboundary(k, up_a, k_stalk_dim)?;
         if down_included {
+            let k_minus_stalk_dim = self.section_spaces[k - 1][0].0.dimension();
             let down_a = self.k_adjoint_coboundary(k, vecs, k_minus_stalk_dim)?;
             let down_b = self.k_coboundary(k, down_a, k_stalk_dim)?;
             let out = Matrix::from_vecs(up_b)
@@ -328,4 +328,126 @@ impl<O: OpenSet> CellularSheaf<O> {
         }
         Matrix::from_vecs(up_b).map_err(KohoError::Candle)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use crate::math::cell::{Attach, Cell, OpenSet, Skeleton};
+    use super::*;
+    use crate::math::tensors::Matrix;
+
+    /// A trivial point type.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    struct TestPoint(&'static str);
+
+    /// A super‐minimal OpenSet impl wrapping a HashSet<TestPoint>.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOpenSet {
+        points: HashSet<TestPoint>,
+    }
+
+    impl TestOpenSet {
+        fn new<I: IntoIterator<Item = TestPoint>>(pts: I) -> Self {
+            Self {
+                points: pts.into_iter().collect(),
+            }
+        }
+    }
+
+    impl IntoIterator for TestOpenSet {
+        type IntoIter = std::collections::hash_set::IntoIter<TestPoint>;
+        type Item = TestPoint;
+
+        fn into_iter(self) -> Self::IntoIter {
+            self.points.into_iter()
+        }
+    }
+
+    impl OpenSet for TestOpenSet {
+        fn from(iter: Box<dyn Iterator<Item = TestPoint>>) -> Self {
+            let pts = iter.collect();
+            Self { points: pts }
+        }
+        type Point = TestPoint;
+
+        fn union(&self, other: &Self) -> Self {
+            let mut pts = self.points.clone();
+            pts.extend(other.points.iter().cloned());
+            Self { points: pts }
+        }
+
+        fn intersect(&self, other: &Self) -> Self {
+            let pts = self.points.intersection(&other.points).cloned().collect();
+            Self { points: pts }
+        }
+
+        fn contains(&self, pt: &Self::Point) -> bool {
+            self.points.contains(pt)
+        }
+
+        fn difference(&self, other: &Self) -> Self {
+            let pts = self.points.difference(&other.points).cloned().collect();
+            Self { points: pts }
+        }
+
+        fn is_empty(&self) -> bool {
+            self.points.is_empty()
+        }
+    }
+
+    // A no-op attach: just returns the same set.
+    impl Attach<TestOpenSet> for TestOpenSet {
+        fn attach_boundary(&self, _skeleton: &Skeleton<TestOpenSet>) -> TestOpenSet {
+            self.clone()
+        }
+    }
+
+
+    #[test]
+    fn simple_example_sheaf() -> Result<(), KohoError>{
+        let device = Device::Cpu;
+        let dtype = DType::F32;
+
+        let mut example_sheaf: CellularSheaf<TestOpenSet> = CellularSheaf::init(dtype, device.clone());
+
+        let point_a = Cell::new(
+            TestOpenSet::new(vec![TestPoint("A")]), 
+            TestOpenSet::new(vec![]), 
+            0
+        );
+        let line_aa = Cell::new(
+            TestOpenSet::new(vec![TestPoint("B")]), 
+            TestOpenSet::new(vec![TestPoint("A")]), 
+            1
+        );
+
+        let section_a = Section::new(&[1.0f32, 0.0, 0.0, 1.0], 2, device.clone(), dtype).unwrap();
+        let section_aa = Section::new(&[1.0f32, 0.0, 0.0, 1.0], 2, device.clone(), dtype).unwrap();
+
+        match example_sheaf.attach(point_a, section_a) {
+            Ok((k, idx)) => {println!("Attached cell of dimension {} at index {}", k, idx);}
+            Err(e) => {eprintln!("Failed to attach cell: {:?}", e);}
+        }
+        match example_sheaf.attach(line_aa, section_aa) {
+            Ok((k, idx)) => {println!("Attached cell of dimension {} at index {}", k, idx);}
+            Err(e) => {eprintln!("Failed to attach cell: {:?}", e);}
+        }
+
+        let identity_restrict = Matrix::from_slice(&[1.0f32, 0.0, 0.0, 1.0], 2, 2,device.clone(),dtype).unwrap();
+
+        match example_sheaf.set_restriction(0,0,1,0,identity_restrict.clone(),0) {
+            Ok(()) => {println!("restriction attached");}
+            Err(e) => {eprintln!("Failed to attach cell: {:?}", e);}
+        } 
+
+        let k_cochain = example_sheaf.get_k_cochain(0).unwrap();
+        println!("k_cochain: {:?}", k_cochain);
+        let laplacian = example_sheaf.k_hodge_laplacian(0, k_cochain, false)?;
+        println!("here's the laplacian {:?}", laplacian.shape());
+
+
+        Ok(())
+    }
+
 }

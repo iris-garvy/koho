@@ -144,7 +144,10 @@ impl<O: OpenSet> Cell<O> {
     /// Find all the boundary cells and push incidence indexes to neighbors and itself
     fn attach(&mut self, skeleton: &mut Skeleton<O>) {
         let boundary_set_correspondence = self.boundary_set.attach_boundary(skeleton);
-        let max = skeleton.cells[self.dimension].len();
+        let mut max: usize = 0;
+        if self.dimension < skeleton.cells.len(){
+            max = skeleton.cells[self.dimension].len();
+        }
         for point in boundary_set_correspondence {
             let mut change: Option<(usize, usize)> = None;
             skeleton.cells.iter().enumerate().for_each(|(i, x)| {
@@ -200,7 +203,10 @@ impl<O: OpenSet> Skeleton<O> {
         }
         cell.attach(self);
         if cell.dimension < self.cells.len() {
+            println!("hi we're adding skeleton");
             self.cells[cell.dimension].push(cell);
+        } else {
+            self.cells.push(vec![cell])
         }
         Ok(self.cells[incoming_dim as usize].len())
     }

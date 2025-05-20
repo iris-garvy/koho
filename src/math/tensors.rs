@@ -196,7 +196,7 @@ impl Matrix {
                 other.dimension()
             )));
         }
-        let result_tensor = self.tensor.matmul(other.inner())?;
+        let result_tensor = self.tensor.matmul(&other.inner().reshape((other.dimension(),1)).unwrap())?.reshape(other.dimension())?;
         Ok(Vector {
             tensor: result_tensor,
             device: self.device.clone(),
