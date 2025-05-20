@@ -1,11 +1,21 @@
 # koho
 
-Spectral theory for cellular sheaves, and sheaf neural network library. 
+Sheaf neural networks and other exotic diffusion models, built on `candle`. 
 
 > Do Not Use Yet!!
 
-### what
+### what is this?
 
-I read the paper [Towards A Spectral Theory of Cellular Sheaves](https://arxiv.org/pdf/1808.01513) recently and realized how much of a game changer this is. It also sort of gave me a new perspective on how powerful [sheaf neural networks](https://arxiv.org/abs/2012.06333) can be. While traditionally used in graph settings, there's nothing stopping you from building one over a generic cell complex (as the authors note), as it fundamentally is the same construction, same laplacian respresentation and everything. Tangentially, there was this paper recently introduced called [Higher-Order Laplacian Renormalization](https://arxiv.org/abs/2401.11298) that extends the ideas of renormalization group theory in physics to arbitrary higher-order networks. This is kind of amazing, it pretty much would directly let you analyze multiscale laplacian dynamics on the network right away. This has nothing to do with cellular sheaves currently, but why not see what happens if you use sheaf laplacians, could this be extensible to cell complexes generally as well?
+This repository implements an extension of [sheaf neural networks](https://arxiv.org/abs/2012.06333) aimed to handle diffusion over k-cells in a cell complex. This implementation differs from typical sheaf neural network implementations, that focus on the 0th cohomology and frequently restrict to graphs based settings, by following the general [spectral theory of cellular sheaves](https://arxiv.org/abs/1808.01513).
 
-This library is an attempt to build a generic cellular sheaf, sheaf neural network over a cell complex, a whole set of spectral analysis tools, along with an attempt at exploring sheaf laplacian renormalization.
+## why?
+
+so we can do diffusion over k-dimensional cells in a cellular sheaf!
+
+## Contributing
+
+Contributors are welcome and greatly appreciated! Please feel free to submit a Pull Request or claim an issue youd like to work on. For major changes, please open an issue first to discuss what you would like to change. If you would like to work more closely with Mesocarp on other projects as well, please email me at sushi@fibered.cat, would love to chat!
+
+## License
+
+This project is licensed under the AGPL-3.0 copyleft license - see the [LICENSE](LICENSE) file for details.
