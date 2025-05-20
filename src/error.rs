@@ -16,4 +16,5 @@ pub enum MathError {
     NoCellsofDimensionK,
     NotInvertible,
     Candle(Error),
+    Msg(String),
 }
